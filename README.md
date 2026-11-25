@@ -56,6 +56,6 @@ npm run deploy
 ## Git
 
 Целевой remote: https://github.com/crmby/yuktari_trip_planning.git, ветка `main`.
-Повторная проверка Git подтвердила доступность репозитория: `git ls-remote` и `git fetch origin` завершились успешно, удалённых веток нет. Создан первый локальный коммит в `main`. Push отклонён с HTTP 403: аккаунту `vrodionova-eng` требуется право Write в репозитории. После выдачи доступа выполните `git push -u origin main`. Не используйте force push.
+Аккаунту `vrodionova-eng` предоставлен доступ; первая отправка в GitHub выполнена успешно. Локальная ветка `main` отслеживает `origin/main`. Владельцем репозитория остаётся `crmby`. Для дальнейшей синхронизации используйте `git pull --ff-only` и `git push`. Не используйте force push.
 
 Скилл установлен в `.agents/skills` и будет доступен при следующем обращении в этом проекте.

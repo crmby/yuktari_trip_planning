@@ -6,7 +6,7 @@
 
 Git инициализирован с веткой main, настроен origin. После уточнения пользователя повторные `git ls-remote origin` и `git fetch origin` завершились с кодом 0: репозиторий доступен, удалённых веток нет. Настроено доверие Git только к папке этого проекта для пользовательской учётной записи Windows.
 
-Первый коммит создан локально. `git push -u origin main` отклонён с HTTP 403: Permission denied to vrodionova-eng. Требуется право Write для этого аккаунта; изменения на GitHub не отправлены.
+После предоставления доступа аккаунту vrodionova-eng выполнены `git fetch origin` и `git push -u origin main` — код 0. Первый коммит 1e60d9f опубликован в crmby/yuktari_trip_planning; main отслеживает origin/main. Удалённый SHA подтверждён через git ls-remote. Владельцем остаётся crmby.
 
 PHP не обнаружен в PATH; Docker Engine не запущен. Проверки справочного PHP-комплекта не выполнялись. Рабочий Node.js-каркас не требует PHP или Docker.
 

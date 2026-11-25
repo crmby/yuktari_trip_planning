@@ -1,0 +1,14 @@
+# ЯДРО ШАБЛОНА ПОМИМО ВСЕХ .php В www/api И www/bin — один список на двоих:
+# гейт (tests/gate-lib.php → gateTemplateExtraCoreFiles) и раздающая сверка ядра
+# (/data/standards/tools/core-sync.sh). Строка — путь от корня проекта.
+#
+# Добавил общий файл движка фронта — впиши его СЮДА. Прежде список жил в трёх
+# местах, и файл, вписанный только в гейт, давал зелёный прогон, но в проекты не
+# доезжал вовсе (ревью 23.09.2026, dubli-4). app.js и style.css — место кода
+# проекта, их здесь нет намеренно.
+www/index.php
+www/js/ui.js
+www/js/controls.js
+www/js/frame.js
+www/css/tokens.css
+www/css/components.css

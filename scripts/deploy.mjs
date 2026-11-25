@@ -1,0 +1,88 @@
+import { mkdtemp, readdir, lstat, rm, copyFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { loadLocalEnv, projectRoot } from '../src/config.js';
+
+const dryRun = process.argv.includes('--dry-run');
+const entries = ['src', 'public', 'package.json', 'package-lock.json'];
+const baseUrl = 'https://vibecode.bitrix24.tech/v1';
+let temporary;
+
+async function review(path) {
+  const stat = await lstat(path);
+  if (stat.isSymbolicLink()) throw new Error('Архив не должен содержать символические ссылки.');
+  if (stat.isDirectory()) {
+    for (const name of await readdir(path)) {
+      if (name.startsWith('.') || /\.(env|pem|key|log)$/i.test(name) || ['node_modules', 'data', 'var'].includes(name)) {
+        throw new Error('В рабочем каталоге обнаружен файл, не предназначенный для публикации.');
+      }
+      await review(join(path, name));
+    }
+  } else if (!stat.isFile()) throw new Error('В архив можно включать только обычные файлы.');
+}
+
+function tar(args) {
+  const result = spawnSync(process.platform === 'win32' ? 'tar.exe' : 'tar', args, { cwd: projectRoot, encoding: 'utf8' });
+  if (result.error || result.status !== 0) throw new Error('Не удалось обработать архив. Проверьте наличие tar.');
+  return result.stdout;
+}
+
+async function api(path, key, options = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...options, headers: { 'X-Api-Key': key }, redirect: 'error', signal: AbortSignal.timeout(900_000),
+  });
+  if (!response.ok) throw new Error(`VibeCode: HTTP ${response.status}. Подробности доступны в кабинете VibeCode.`);
+  let body;
+  try { body = await response.json(); } catch { throw new Error('VibeCode вернул ответ в неожиданном формате.'); }
+  if (body.success !== true) throw new Error('VibeCode сообщил об ошибке. Проверьте журнал деплоя в кабинете.');
+  return body.data;
+}
+
+try {
+  if (process.argv.slice(2).some(arg => arg !== '--dry-run')) throw new Error('Допустимый параметр: --dry-run.');
+  // Packaging can be checked without opening .env or accessing the network.
+  for (const entry of entries) await review(join(projectRoot, entry));
+  temporary = await mkdtemp(join(tmpdir(), 'yuktari-deploy-'));
+  const archive = join(temporary, 'app.tar.gz');
+  tar(['-czf', archive, ...entries]);
+  const contents = tar(['-tzf', archive]).split(/\r?\n/).filter(Boolean);
+  if (!contents.includes('src/server.js') || contents.some(name => !entries.some(entry => name === entry || name.startsWith(`${entry}/`)))) {
+    throw new Error('Содержимое архива не соответствует списку публикации.');
+  }
+  if (dryRun) {
+    await copyFile(archive, join(projectRoot, 'deploy-preview.tar.gz'));
+    console.log(`Архив проверен: ${contents.length} записей. Файл deploy-preview.tar.gz. Сетевые запросы не выполнялись.`);
+  } else {
+    loadLocalEnv();
+    const { SERVER_ID: serverId, VIBE_API_KEY: key, B24_DOMAIN: portal } = process.env;
+    if (!serverId || !key || !portal) throw new Error('Заполните SERVER_ID, VIBE_API_KEY и B24_DOMAIN в локальном .env.');
+    if (!/^[a-z0-9.-]+$/i.test(portal)) throw new Error('B24_DOMAIN должен содержать домен без протокола и пути.');
+    await api('/me', key);
+    const id = encodeURIComponent(serverId);
+    const server = await api(`/infra/servers/${id}/ssh`, key);
+    if (server.mode !== 'BLACKHOLE') throw new Error('Для этого проекта требуется существующий сервер в режиме BLACKHOLE. Режим доступа не изменён.');
+    const form = new FormData();
+    form.set('archive', new Blob([readFileSync(archive)], { type: 'application/gzip' }), 'app.tar.gz');
+    for (const [name, value] of Object.entries({
+      runtime: 'node20', install: 'cd /opt/app && npm ci --omit=dev',
+      start: 'cd /opt/app && node src/server.js', port: '3000', cleanDeploy: 'true',
+      displayName: 'Планирование выездов', description: 'Планирование выездов сотрудников Юктари',
+      env: JSON.stringify({ NODE_ENV: 'production', HOST: '0.0.0.0', PORT: '3000', B24_DOMAIN: portal }),
+    })) form.set(name, value);
+    // The management key is used only to deploy; no portal data API exists yet.
+    console.log('Загрузка и деплой приложения…');
+    const result = await api(`/infra/servers/${id}/deploy?stream=false`, key, { method: 'POST', body: form });
+    if (result.steps?.some(step => ['failed', 'error'].includes(String(step.status).toLowerCase()))) throw new Error('Один из шагов деплоя завершился ошибкой. Проверьте журнал VibeCode.');
+    console.log('VibeCode подтвердил деплой. Адрес и журнал доступны в карточке сервера.');
+  }
+} catch (error) {
+  // Never print remote bodies, environment values or raw network exceptions.
+  const safe = error.message.startsWith('VibeCode') || /^(Заполните|Для этого|Не удалось|Архив|Содержимое|В рабочем|В архив|Допустимый|B24_DOMAIN|Один из)/.test(error.message);
+  console.error(safe ? error.message : 'Операция не завершена. Проверьте файлы проекта, сеть и настройки VibeCode.');
+  process.exitCode = 1;
+} finally {
+  // mkdtemp creates this task-owned directory; never remove an environment-provided path.
+  if (temporary) await rm(temporary, { recursive: true, force: true });
+}

@@ -1,0 +1,342 @@
+/* ==========================================================================
+   b24-tokens.css — стиль приложений Битрикс24 (Air), «путь Б»
+   (обычный HTML/CSS/JS или PHP-шаблон, без UI-библиотеки)
+
+   Справочник с объяснениями: bitrix24-style.md (в скилле bitrix24-apps —
+   references/bitrix24-style.md). KiselevLab, 18.11.2026.
+
+   Откуда значения
+   - Синий акцент (--brand, --brand-hover, --brand-ink, --brand-soft) —
+     официальный цвет Битрикс24 Air из библиотеки b24ui: #0075ff.
+   - Остальные цвета, размеры, отступы и радиусы взяты из внутреннего промта
+     «Приведи интерфейс к стилю Битрикс24 (Air)» (раздел 12 справочника).
+     В исходном промте синий был #2c6ce0 — как вернуть его, см. конец
+     раздела 2.3 справочника.
+   - Где промт задаёт диапазон (например «радиус 8–10px»), выбрано одно
+     значение и рядом написано «диапазон промта: …».
+   - Где промт значение не задаёт (внутренние отступы модалки, gap и т. п.),
+     выбрано нейтральное значение и рядом написано «не задано в промте».
+   - Это НЕ копия темы библиотеки @bitrix24/b24ui-nuxt: синий тот же, но
+     размеры другие (там кнопка 34px с радиусом 10px и т. д.). Сравнение —
+     раздел 2 справочника.
+
+   Подключение (относительным путём, без ведущего «/»):
+     <link rel="stylesheet" href="css/b24-tokens.css">
+     <link rel="stylesheet" href="css/style.css">   <- свои стили после токенов
+
+   Тёмной темы нет: никаких @media (prefers-color-scheme: dark).
+   ========================================================================== */
+
+
+/* --------------------------------------------------------------------------
+   1. ТОКЕНЫ — из промта, синие — из Air (b24ui). Пользоваться только ими.
+   -------------------------------------------------------------------------- */
+:root {
+  --brand:#0075ff; --brand-hover:#0072f8; --brand-ink:#0154c8; --brand-soft:#e6f4ff;
+  --page:#f1f4f6; --surface:#fff; --surface-2:#fbfbfb;
+  --line:#00000014; --line-strong:#0000002e;
+  --ink:#1a1c1f; --ink-2:#525c69; --ink-3:#828b95;
+  --ok:#22ac43; --wait:#af8b35; --stop:#d1483f;
+  --folder:#c98a2e;
+  --r:6px;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:400 14px/1.5 var(--ui);-webkit-font-smoothing:antialiased}
+a{color:var(--brand);text-decoration:none} a:hover{text-decoration:underline}
+
+/* Смысл токенов:
+   --brand        единственный акцент: основная кнопка, ссылки, фокус, заливка прогресса
+   --brand-hover  наведение на основную кнопку
+   --brand-ink    текст выбранного/активного состояния (на --brand-soft)
+   --brand-soft   фон выбранного/активного состояния
+   --page         фон страницы;  --surface — белые карточки, шапка, меню
+   --surface-2    фон полей ввода, наведения, шапки таблицы
+   --line         тонкие разделители;  --line-strong — рамки карточек, полей, таблиц
+   --ink / --ink-2 / --ink-3   основной текст / вторичный / подписи, даты, счётчики
+   --ok / --wait / --stop      статусы: готово / ожидание (жёлто-коричневый) / ошибка
+   --folder       цвет иконки папки
+   --r            базовый радиус кнопок и полей
+*/
+
+
+/* --------------------------------------------------------------------------
+   2. СЛУЖЕБНОЕ
+   -------------------------------------------------------------------------- */
+
+/* Кнопки и поля не наследуют шрифт страницы — выравниваем (не задано в промте,
+   стандартный сброс). */
+button,input,select,textarea{font:inherit;color:inherit}
+
+/* Анимации: только короткие переходы по opacity/transform/цвету — и полное
+   отключение для тех, кто просит меньше движения (правило промта). */
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+@keyframes b24-fade{from{opacity:0}to{opacity:1}}
+@keyframes b24-pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+@keyframes b24-toast{from{opacity:0;transform:translate(-50%,6px)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* ВАЖНО про [hidden]: если у элемента задан свой display (flex/grid), атрибут
+   hidden его не скроет. Поэтому ниже display задаётся только через
+   :not([hidden]) — так hidden продолжает работать. Делайте так же в своих
+   стилях:  .x:not([hidden]){display:flex}  */
+
+/* Единый вид фокуса с клавиатуры. Для .btn значение из промта; для остальных
+   интерактивных элементов то же самое правило (расширение промта). */
+.btn:focus-visible,.btn-ghost:focus-visible,.icon-btn:focus-visible,
+.chip:focus-visible,.tab:focus-visible,.seg>button:focus-visible,
+.crumbs a:focus-visible,.th-sort:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+/* Пункты списков — с отступом внутрь, чтобы рамку не обрезал контейнер. */
+.side-item:focus-visible,.menu-item:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+
+
+/* --------------------------------------------------------------------------
+   3. ТИПОГРАФИКА
+   Шрифт системный (--ui), веб-шрифты не подключаем. База 14px (промт: 13–14px).
+   -------------------------------------------------------------------------- */
+h1,.h1{font-size:21px;font-weight:650;letter-spacing:-.018em;margin:0 0 18px;line-height:1.25 /* line-height не задан в промте */}
+.section-title{font-size:13.5px;font-weight:650;margin:0 0 10px /* отступ не задан в промте */}
+
+/* Кикер — мелкий заголовок группы/подпись над метрикой. */
+h5,.kicker{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin:0}
+
+/* Цифры, даты, размеры, длительности, ID — моноширинные с табличными цифрами. */
+.mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+/* ID рядом с заголовком. */
+.id{font:500 12px var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-3)}
+
+/* Крупные метрики. Диапазон промта: 17–25px / 650–700, letter-spacing -.01…-.02em.
+   Подпись над метрикой — .kicker (10.5px uppercase 700 --ink-3). */
+.metric-value{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:650;letter-spacing:-.015em;line-height:1.2;color:var(--ink)}
+
+/* Длинный текст (резюме, досье, описание). */
+.longtext{max-width:74ch;font-size:13.4px;line-height:1.6;color:var(--ink-2)}
+
+/* Уровни текста. */
+.t-2{color:var(--ink-2)} .t-3{color:var(--ink-3)}
+
+
+/* --------------------------------------------------------------------------
+   4. РАСКЛАДКА
+   -------------------------------------------------------------------------- */
+
+/* Шапка: белая, тонкая линия снизу. Действия справа — ОДНИМ блоком
+   .topbar-actions с margin-left:auto (не автоотступ на каждой кнопке).
+   Кнопки-переходы в шапке — бледные (.btn-ghost), не синие. */
+.topbar{background:var(--surface);padding:11px 18px;border-bottom:1px solid var(--line);align-items:center;gap:12px /* gap не задан в промте */}
+.topbar:not([hidden]){display:flex}
+.topbar-actions{margin-left:auto;align-items:center;gap:8px}
+.topbar-actions:not([hidden]){display:flex}
+.topbar .btn-ghost{background:var(--surface)}
+
+/* Страница без левого меню. */
+.pane{padding:18px 20px 26px;max-width:1180px;margin:0 auto}
+
+/* Страница с левым меню: меню 270px + контент. */
+.layout:not([hidden]){display:grid;grid-template-columns:270px minmax(0,1fr)}
+.side{background:var(--surface);border-right:1px solid var(--line);padding:12px 10px /* не задано в промте */}
+.side-group{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);padding:14px 9px 6px /* отступы не заданы в промте */}
+.side-item{align-items:center;gap:8px;padding:7px 9px;border-radius:var(--r);font-size:13.2px;color:var(--ink-2);text-decoration:none;cursor:pointer;transition:background-color .15s ease,color .15s ease}
+.side-item:not([hidden]){display:flex}
+.side-item:hover{background:var(--surface-2);text-decoration:none}
+/* Выбранное состояние — всегда одно и то же: brand-soft / brand-ink / 600. */
+.side-item.is-active,.side-item[aria-current="page"]{background:var(--brand-soft);color:var(--brand-ink);font-weight:600}
+.side-count{margin-left:auto;font:11px var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-3)}
+/* На ширине ≤880px меню прячется. */
+@media (max-width:880px){
+  .layout:not([hidden]){grid-template-columns:minmax(0,1fr)}
+  .side{display:none}
+}
+
+/* Контентная колонка рядом с меню. */
+.content{padding:24px 30px 40px;min-width:0}
+
+/* Сетка карточек и ряд метрик. */
+.cards:not([hidden]){display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:16px}
+.metrics:not([hidden]){display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.metrics.cols-3:not([hidden]){grid-template-columns:repeat(3,minmax(0,1fr))}
+
+/* Длинные панели (чат, дерево, список) — фиксированная высота в px и прокрутка
+   внутри, иначе вся страница внутри iframe раздувается. Высота — под проект. */
+.scroll-panel{height:480px /* пример, подберите под экран */;overflow:auto}
+
+
+/* --------------------------------------------------------------------------
+   5. КОМПОНЕНТЫ
+   -------------------------------------------------------------------------- */
+
+/* Карточка. Без теней. Диапазон промта: радиус 8–10px, padding 14–16px;
+   рамка --line-strong (или --line для «тихих» карточек — .card.soft). */
+.card{background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;padding:16px}
+.card.soft{border-color:var(--line)}
+
+/* Основная кнопка. На экране одна, максимум две синие кнопки. */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px /* не задано */;
+  font:600 13px/1.25 var(--ui) /* line-height не задан; 1.25 -> высота ~34px */;
+  padding:9px 14px;border:0;border-radius:var(--r);background:var(--brand);color:var(--surface) /* белый */;
+  cursor:pointer;text-decoration:none;white-space:nowrap;transition:background-color .15s ease}
+.btn:hover{background:var(--brand-hover);text-decoration:none}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed;background:var(--brand)}
+
+/* Второстепенная кнопка. padding на 1px меньше, чтобы с рамкой высота
+   совпала с .btn (наш выбор; в промте padding для неё не задан). */
+.btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  font:600 13px/1.25 var(--ui);padding:8px 13px;background:transparent;border:1px solid var(--line-strong);
+  border-radius:var(--r);color:var(--ink-2);cursor:pointer;text-decoration:none;white-space:nowrap;transition:background-color .15s ease}
+.btn-ghost:hover{background:var(--surface-2);text-decoration:none}
+.btn-ghost:disabled,.btn-ghost[aria-disabled="true"]{opacity:.55;cursor:not-allowed}
+
+/* Ряд кнопок: gap 8px, прижат вправо. */
+.btn-row{justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap}
+.btn-row:not([hidden]){display:flex}
+
+/* Кнопка-иконка 27×27. Обязательно aria-label (у неё нет текста). */
+.icon-btn{width:27px;height:27px;padding:0;border:0;border-radius:var(--r);background:transparent;color:var(--ink-3);
+  align-items:center;justify-content:center;cursor:pointer;flex:none;transition:background-color .15s ease,color .15s ease}
+.icon-btn:not([hidden]){display:inline-flex}
+.icon-btn:hover{background:var(--surface-2);color:var(--ink)}
+.icon-btn svg{width:16px;height:16px /* диапазон промта для иконок в кнопках: 14–18px */}
+/* Разделитель групп иконок: вертикальная черта 1×16. */
+.icon-sep{display:inline-block;width:1px;height:16px;background:var(--line-strong);flex:none}
+
+/* Поле ввода и поиск: высота 38px. */
+.input{width:100%;height:38px;padding:0 12px /* не задано в промте */;background:var(--surface-2);
+  border:1px solid var(--line-strong);border-radius:var(--r);font-size:13.5px;color:var(--ink)}
+.input::placeholder{color:var(--ink-3)}
+.input:focus{outline:2px solid var(--brand);outline-offset:-1px}
+textarea.input{height:auto;min-height:76px /* не задано */;padding:9px 12px;line-height:1.5;resize:vertical}
+/* Поиск: лупа — SVG внутри поля слева. */
+.search{position:relative}
+.search>svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ink-3);pointer-events:none}
+.search>.input{padding-left:32px}
+
+/* Чип / фильтр. Включённый — brand-soft / brand-ink, рамка brand 30%.
+   Для кнопки-переключателя ставьте aria-pressed="true|false". */
+.chip{align-items:center;gap:6px /* не задано */;font:500 11.5px/1.2 var(--ui);padding:6px 9px;border-radius:100px;
+  border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink-2);cursor:pointer;white-space:nowrap;
+  transition:background-color .15s ease,color .15s ease}
+.chip:not([hidden]){display:inline-flex}
+.chip.is-on,.chip[aria-pressed="true"]{background:var(--brand-soft);color:var(--brand-ink);border-color:color-mix(in srgb,var(--brand) 30%,transparent)}
+
+/* Пилюля статуса: цвет текста — статусный, фон — 10%, рамка — 40%,
+   точка 6px currentColor. Цвет задаётся модификатором. */
+.pill{--c:var(--ink-3);align-items:center;gap:6px /* не задано */;font:600 11px/1.2 var(--ui);padding:5px 9px;border-radius:100px;
+  color:var(--c);background:color-mix(in srgb,var(--c) 10%,transparent);border:1px solid color-mix(in srgb,var(--c) 40%,transparent);white-space:nowrap}
+.pill:not([hidden]){display:inline-flex}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.pill.ok{--c:var(--ok)} .pill.wait{--c:var(--wait)} .pill.stop{--c:var(--stop)}
+
+/* Вкладки с подчёркиванием. Под рядом общая линия --line. */
+.tabs{border-bottom:1px solid var(--line);gap:0}
+.tabs:not([hidden]){display:flex}
+.tab{font:600 13px/1.25 var(--ui);padding:8px 14px;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;
+  color:var(--ink-2) /* цвет неактивной вкладки не задан в промте */;cursor:pointer;text-decoration:none;transition:color .15s ease,border-color .15s ease}
+.tab:hover{color:var(--ink);text-decoration:none}
+.tab.is-active,.tab[aria-selected="true"]{color:var(--brand-ink);border-bottom-color:var(--brand)}
+
+/* Вкладки-кнопки (переключатель видов). Белые с рамкой; включённая —
+   brand-soft / brand-ink. Склеенный ряд — наш выбор (в промте не задано). */
+.seg{align-items:stretch}
+.seg:not([hidden]){display:inline-flex}
+.seg>button{font:600 12.5px/1.25 var(--ui);padding:8px 13px;background:var(--surface);border:1px solid var(--line-strong);
+  color:var(--ink-2);cursor:pointer;margin-left:-1px;border-radius:0;transition:background-color .15s ease,color .15s ease}
+.seg>button:first-child{margin-left:0;border-radius:var(--r) 0 0 var(--r)}
+.seg>button:last-child{border-radius:0 var(--r) var(--r) 0}
+.seg>button:hover{background:var(--surface-2)}
+.seg>button.is-on,.seg>button[aria-pressed="true"]{background:var(--brand-soft);color:var(--brand-ink);position:relative}
+
+/* Таблица-список (не сетка Excel): внешняя рамка, без вертикальных линий,
+   линия между строками, подсветка строки при наведении. */
+.table-wrap{border:1px solid var(--line-strong);border-radius:10px;overflow:hidden;background:var(--surface)}
+.table-scroll{overflow-x:auto /* для широких таблиц; наше дополнение */}
+.table{width:100%;border-collapse:collapse}
+.table th{font-size:11px;font-weight:600 /* не задано в промте */;text-transform:uppercase;letter-spacing:.04em;
+  background:var(--surface-2);color:var(--ink-2);text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.table td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.table tbody tr:last-child td{border-bottom:0}
+.table tbody tr{transition:background-color .15s ease}
+.table tbody tr:hover{background:var(--surface-2)}
+/* Числовые колонки — моноширинные (выравнивание вправо — наш выбор). */
+.table .num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+/* Кнопка сортировки в заголовке: стрелка — SVG-шеврон, не CSS-треугольник. */
+.th-sort{align-items:center;gap:4px;padding:0;border:0;background:none;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer}
+.th-sort:not([hidden]){display:inline-flex}
+.th-sort svg{width:12px;height:12px /* размер не задан в промте */}
+
+/* Прогресс-бар. Диапазон промта: высота 5–8px; дорожка --line или --surface-2;
+   заливка --brand или статусный цвет. В разметке: role="progressbar" + aria-valuenow. */
+.progress{height:6px;border-radius:100px;background:var(--line);overflow:hidden}
+.progress>span{display:block;height:100%;border-radius:inherit;background:var(--brand);transition:width .15s ease}
+.progress.ok>span{background:var(--ok)} .progress.wait>span{background:var(--wait)} .progress.stop>span{background:var(--stop)}
+
+/* Аватар: круг (диапазон промта 26–28px), фон brand-soft, инициалы 700 10.5px. */
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--brand-soft);color:var(--brand-ink);
+  font:700 10.5px/1 var(--ui);align-items:center;justify-content:center;flex:none;overflow:hidden}
+.avatar:not([hidden]){display:inline-flex}
+.avatar img{width:100%;height:100%;object-fit:cover}
+
+/* Хлебные крошки — белый блок высотой 38px с рамкой. */
+.crumbs{height:38px;align-items:center;gap:2px;padding:0 8px /* не задано */;background:var(--surface);
+  border:1px solid var(--line-strong);border-radius:var(--r) /* радиус блока не задан */;min-width:0;overflow:hidden}
+.crumbs:not([hidden]){display:flex}
+.crumbs a,.crumbs .crumb{padding:3px 6px;border-radius:5px;color:var(--ink-2) /* цвет не задан */;font-size:13px /* не задано */;white-space:nowrap;text-decoration:none}
+.crumbs a:hover{background:var(--surface-2);text-decoration:none}
+.crumbs [aria-current="page"]{color:var(--ink);font-weight:600}
+.crumbs .sep{color:var(--ink-3);font-size:11px}
+
+/* Пустое состояние. */
+.empty{text-align:center;padding:60px 20px}
+.empty svg{width:28px;height:28px;color:var(--ink-3);margin-bottom:10px /* не задано */}
+.empty-title{color:var(--ink-2);font-size:14px;font-weight:700;margin:0 0 6px}
+.empty p{font-size:12.8px;color:var(--ink-3);max-width:44ch;margin:0 auto}
+.empty .btn-row{justify-content:center;margin-top:14px /* не задано */}
+
+/* Предупреждение: текст --wait, фон wait 12%, рамка wait 30%. */
+.warn{color:var(--wait);background:color-mix(in srgb,var(--wait) 12%,transparent);border:1px solid color-mix(in srgb,var(--wait) 30%,transparent);
+  border-radius:var(--r);padding:9px 11px;font-size:12px;gap:8px;align-items:flex-start}
+.warn:not([hidden]){display:flex}
+.warn svg{width:14px;height:14px;flex:none;margin-top:1px}
+
+/* Модалка — одно из немногих мест с тенью. Ширина 720px, подложка #00000059,
+   появление через opacity и scale(.97 -> 1) за .16s.
+   Показ: снять атрибут hidden с .modal-backdrop. ВНИМАНИЕ: position:fixed внутри
+   iframe Битрикс24 ненадёжен — см. раздел 7 справочника. */
+.modal-backdrop{position:fixed;inset:0;background:#00000059;padding:20px;place-items:center;z-index:100;overflow:auto}
+.modal-backdrop:not([hidden]){display:grid;animation:b24-fade .16s ease}
+.modal{width:min(720px,100%);background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;
+  box-shadow:0 24px 60px #00000040;animation:b24-pop .16s ease}
+.modal-head{align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line) /* отступы и линия не заданы */}
+.modal-head:not([hidden]){display:flex}
+.modal-head .section-title{margin:0}
+.modal-head .icon-btn{margin-left:auto}
+.modal-body{padding:16px 18px /* не задано */}
+.modal-foot{padding:12px 18px 16px /* не задано */}
+
+/* Тост: внизу по центру, тёмный, «таблетка». Отступ снизу не задан в промте. */
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--page);
+  font:600 12.5px/1.3 var(--ui);border-radius:100px;padding:9px 16px;z-index:110;max-width:calc(100% - 32px)}
+.toast:not([hidden]){display:block;animation:b24-toast .16s ease}
+
+/* Выпадающий список подсказок / меню действий. Группы подписаны кикером. */
+.menu{background:var(--surface);border-radius:10px;box-shadow:0 10px 30px #00000022;padding:6px /* не задано */;min-width:220px /* не задано */}
+.menu .kicker{padding:8px 10px 4px}
+.menu-item{align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);color:var(--ink);font-size:13px /* не задано */;
+  cursor:pointer;text-decoration:none;transition:background-color .15s ease}
+.menu-item:not([hidden]){display:flex}
+.menu-item:hover,.menu-item.is-hover{background:var(--surface-2);text-decoration:none}
+.menu-item.is-active,.menu-item[aria-selected="true"]{background:var(--brand-soft);color:var(--brand-ink);font-weight:600}
+.menu-item .num{margin-left:auto;font-size:11px;color:var(--ink-3)}
+
+
+/* --------------------------------------------------------------------------
+   6. ИКОНКИ — только инлайн-SVG в стиле линий:
+   <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">…</svg>
+   Размер 14–18px в строках и кнопках, 26–30px в крупных карточках.
+   Цвет — из color родителя. Эмодзи и иконочные шрифты не используем.
+   -------------------------------------------------------------------------- */
+svg.ico{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round;vertical-align:-3px}
+svg.ico-lg{width:28px;height:28px}
+.ico-folder{color:var(--folder)}
+.ico-file{color:var(--ink-3)}

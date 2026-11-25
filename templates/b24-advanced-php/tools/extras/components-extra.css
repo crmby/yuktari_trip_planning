@@ -1,0 +1,163 @@
+/*
+ * ДОПОЛНИТЕЛЬНЫЕ КОМПОНЕНТЫ — подключаются ПО ЗАПРОСУ, не входят в ядро.
+ *
+ * ЗАЧЕМ ОТДЕЛЬНЫМ ФАЙЛОМ. Обсуждали Bootstrap и отказались: он тянет свою
+ * палитру и светлую тему, а его модалки и выпадашки позиционируются по вьюпорту
+ * и потому ломаются в плейсменте Битрикса (окно там ~200px, см. js/frame.js).
+ * Взамен — то немногое, чего в components.css правда не было, на НАШИХ токенах.
+ *
+ * ЧЕГО ЗДЕСЬ НЕТ И ПОЧЕМУ. Вкладок (.tabs/.tab), модалок (.modal-*), таблиц и
+ * карточек здесь нет намеренно — они давно в components.css. Дублировать их
+ * значило бы получить два конкурирующих набора правил в одном каскаде.
+ *
+ * ПОЧЕМУ НЕ В components.css. Тот файл — ядро: core-sync.sh раздаёт его во все
+ * проекты. Всё, что туда попадает, получают все, включая тех, кому это не нужно.
+ * Этот файл в список ядра НЕ входит и появляется в проекте только руками:
+ *   bash /data/standards/tools/bxapp-extra.sh <проект> --apply
+ *
+ * ПРАВИЛО ПРАВКИ. Только добавлять. Ни один селектор отсюда не должен
+ * переопределять то, что есть в components.css: проект, подключивший файл,
+ * иначе поедет визуально там, где ничего не просил менять.
+ */
+
+/* ── Аккордеон ────────────────────────────────────────────────────────────
+   Построен на <details>/<summary>: раскрытие, клавиатура и доступность
+   достаются от браузера даром, JS не нужен вовсе. Класс вешается на <details>.
+
+   <details class="acc"><summary class="acc-head">Заголовок</summary>
+     <div class="acc-body">…</div>
+   </details>                                                              */
+.acc {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); overflow: hidden;
+}
+.acc + .acc { margin-top: var(--gap-s); }
+.acc-head {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 11px 14px; font: 500 13px/1.4 var(--font); color: var(--text);
+  list-style: none; user-select: none;
+  transition: background var(--motion-fast);
+}
+.acc-head:hover { background: var(--surface-2); }
+/* Родной треугольник убираем в обоих движках и рисуем свой — он должен
+   поворачиваться, а системный маркер анимировать нельзя. */
+.acc-head::-webkit-details-marker { display: none; }
+.acc-head::before {
+  content: ''; flex-shrink: 0; width: 0; height: 0;
+  border: 4px solid transparent; border-left-color: var(--text-mute);
+  margin-right: 2px;
+  transition: transform var(--motion-fast);
+}
+.acc[open] > .acc-head::before { transform: rotate(90deg) translateX(-1px); }
+.acc[open] > .acc-head { border-bottom: 1px solid var(--border-soft); }
+.acc-body {
+  padding: 12px 14px; font-size: 13px; line-height: 1.55; color: var(--text-dim);
+}
+
+/* ── Подсказка при наведении ──────────────────────────────────────────────
+   Текст берётся из атрибута data-tip, всё на CSS.
+
+   ПОЧЕМУ НЕ БИБЛИОТЕКА. Popper и его родня ставят подсказку в position: fixed
+   по координатам вьюпорта. Внутри плейсмента Битрикса вьюпорт — это окно
+   высотой в пару сотен пикселей, и подсказка уезжает за край. Здесь она
+   absolute внутри своего же родителя и уехать не может.
+
+   ГРАНИЦА ПРИМЕНИМОСТИ. Подсказку обрезает любой предок с overflow: hidden или
+   auto — например .table-wrap. В прокручиваемом контейнере используйте .tip-in
+   (она разворачивается вниз и внутрь) либо обычный title.
+
+   <button class="btn tip" data-tip="Что это значит">?</button>            */
+.tip { position: relative; }
+.tip::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  z-index: var(--z-drop);
+  max-width: 240px; width: max-content;
+  padding: 6px 9px; border-radius: var(--radius-sm);
+  background: var(--surface-3); border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-pop);
+  font: 400 12px/1.4 var(--font); color: var(--text); text-align: left;
+  white-space: normal; pointer-events: none;
+  opacity: 0; visibility: hidden;
+  transition: opacity var(--motion-fast), transform var(--motion-fast), visibility var(--motion-fast);
+}
+/* :focus-visible — чтобы подсказка открывалась и с клавиатуры, а не только мышью. */
+.tip:hover::after, .tip:focus-visible::after {
+  opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0);
+}
+/* Вариант для прокручиваемых контейнеров: вниз, прижата к левому краю. */
+.tip-in::after { bottom: auto; top: calc(100% + 6px); left: 0; transform: translateY(-2px); }
+.tip-in:hover::after, .tip-in:focus-visible::after { transform: translateY(0); }
+
+/* ── Сетка в 12 колонок ───────────────────────────────────────────────────
+   .grid-2 в ядре решает один случай — две равные колонки. Здесь общий случай.
+
+   ПОЧЕМУ БРЕЙКПОИНТ ОДИН И НИЗКИЙ. Приложение живёт в iframe, и ширина ему
+   достаётся не от экрана, а от плейсмента: в карточке сделки это узкая панель
+   при любом мониторе. Поэтому колонки схлопываются по ширине КОНТЕЙНЕРА, а не
+   по медиазапросу — container query знает настоящую ширину, media знает ширину
+   окна и в iframe врёт.
+
+   <div class="row"><div class="col-8">…</div><div class="col-4">…</div></div> */
+.row { container-type: inline-size; display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--gap); }
+.col-1  { grid-column: span 1; }
+.col-2  { grid-column: span 2; }
+.col-3  { grid-column: span 3; }
+.col-4  { grid-column: span 4; }
+.col-5  { grid-column: span 5; }
+.col-6  { grid-column: span 6; }
+.col-7  { grid-column: span 7; }
+.col-8  { grid-column: span 8; }
+.col-9  { grid-column: span 9; }
+.col-10 { grid-column: span 10; }
+.col-11 { grid-column: span 11; }
+.col-12 { grid-column: span 12; }
+/* Узкий контейнер — всё в одну колонку. 560px: ниже этого две колонки текста
+   становятся нечитаемыми полосками по 260px. */
+@container (max-width: 560px) {
+  .row > [class*='col-'] { grid-column: 1 / -1; }
+}
+/* Запасной путь для движка без container queries: то же самое по окну.
+   Проверка отдельная — @container внутри @supports не работает. */
+@supports not (container-type: inline-size) {
+  @media (max-width: 560px) {
+    .row > [class*='col-'] { grid-column: 1 / -1; }
+  }
+}
+
+/* ── Постраничная навигация ───────────────────────────────────────────────
+   Под курсорные страницы «Назад/Дальше» из правил: номеров страниц здесь нет
+   намеренно — при курсоре общее число страниц неизвестно.
+
+   <div class="pager">
+     <button class="btn btn-sm" disabled>Назад</button>
+     <span class="pager-info">1–25</span>
+     <button class="btn btn-sm">Дальше</button>
+   </div>                                                                   */
+.pager { display: flex; align-items: center; justify-content: center; gap: var(--gap-s); margin-top: var(--gap); }
+.pager-info { font: 400 12px/1 var(--font-mono); color: var(--text-mute); min-width: 90px; text-align: center; }
+
+/* ── Заглушка на время загрузки ───────────────────────────────────────────
+   Показывает форму будущего содержимого вместо прыгающего «Загрузка…».
+
+   <div class="skel skel-line"></div>                                       */
+.skel {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+  animation: skel-slide var(--motion-cycle-wait, 1.4s) ease-in-out infinite;
+}
+.skel-line { height: 12px; margin-bottom: 8px; }
+.skel-line:nth-child(3n) { width: 72%; }
+.skel-line:last-child { margin-bottom: 0; }
+.skel-block { height: 72px; }
+@keyframes skel-slide {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+/* Уважаем системную настройку: бегущий блик — движение, и для тех, кто его
+   отключил, остаётся ровная заливка. Так же сделано в js/ui.js (motionReduced). */
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; background: var(--surface-2); }
+}

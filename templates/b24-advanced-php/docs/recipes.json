@@ -1,0 +1,324 @@
+{
+  "_": "МАШИННЫЙ РЕЕСТР ДОНОРОВ РЕЦЕПТОВ. Что в RECIPES.md названо «донором» — то есть код в ЧУЖОМ проекте, который переносят под задачу. Здесь опора, по которой донора можно найти снова: проект + путь + опорные символы + отпечаток файла. Номера строк в RECIPES.md — вспомогательные: они уезжают при любой правке донора, а путь и символ живут. Проверяет tools/recipes-check.php: исчезнувший путь — ошибка, изменившийся отпечаток — предупреждение «цитаты могли уехать, перепроверь». Чужие проекты только ЧИТАЕМ.",
+  "version": 1,
+  "checked_at": "2026-09-08",
+  "projects_root": "/data/projects",
+  "donors": [
+    {
+      "donor": "bg-calendar/www/api/calendar_app.php",
+      "symbols": [
+        "harvestUserToken",
+        "refreshUserToken",
+        "callAsUser"
+      ],
+      "sha256_12": "c4b5af93cd34",
+      "bytes": 15263,
+      "lines": 358,
+      "cited_ranges": [
+        "66-194"
+      ]
+    },
+    {
+      "donor": "bg-historychanges/www/api/historychanges.php",
+      "symbols": [
+        "hcEventHandlerUrl",
+        "hcDesiredEvents",
+        "hcEtidByEvent",
+        "hcReconcileEvents"
+      ],
+      "sha256_12": "5c4816073a5f",
+      "bytes": 159364,
+      "lines": 3038,
+      "cited_ranges": []
+    },
+    {
+      "donor": "bg-parserkursov/www/api/xlsx.php",
+      "symbols": [
+        "spreadsheetToTable",
+        "legacySpreadsheetPreflight",
+        "legacyXlsOlePreflight"
+      ],
+      "sha256_12": "84ddfe9790af",
+      "bytes": 144687,
+      "lines": 3323,
+      "cited_ranges": []
+    },
+    {
+      "donor": "bg-poisklientov/www/api/user-search.php",
+      "symbols": [],
+      "anchors": [
+        "requireAdminSession();",
+        "$b24->call('user.get'"
+      ],
+      "sha256_12": "44db96cd1bc5",
+      "bytes": 3947,
+      "lines": 98,
+      "cited_ranges": [
+        "1-97"
+      ]
+    },
+    {
+      "donor": "dental-dupp/www/api/dedup-lib.php",
+      "symbols": [
+        "dedupCfg",
+        "dedupGuidField",
+        "dedupMatchField"
+      ],
+      "sha256_12": "6cc90f258c29",
+      "bytes": 62475,
+      "lines": 1030,
+      "cited_ranges": []
+    },
+    {
+      "donor": "enhi-checkdela/www/api/bizproc.php",
+      "symbols": [
+        "bpHandlerUrl",
+        "bpDocumentType",
+        "bpProperties"
+      ],
+      "sha256_12": "41685f08474e",
+      "bytes": 9947,
+      "lines": 227,
+      "cited_ranges": [
+        "21-226"
+      ]
+    },
+    {
+      "donor": "enhi-checkdela/www/api/checker.php",
+      "symbols": [
+        "checkSettings",
+        "loadSettingsRaw",
+        "saveCheckSettings"
+      ],
+      "sha256_12": "81831c7b59f0",
+      "bytes": 18962,
+      "lines": 376,
+      "cited_ranges": [
+        "240-288"
+      ]
+    },
+    {
+      "donor": "epk-chatmessage/www/api/queue.php",
+      "symbols": [
+        "queuePath",
+        "deadPath",
+        "queueLockPath",
+        "queueSnapshotPick",
+        "queueQuarantineBroken",
+        "queueDepth"
+      ],
+      "sha256_12": "37c3d6f225f2",
+      "bytes": 66168,
+      "lines": 1348,
+      "cited_ranges": [
+        "790-1004"
+      ]
+    },
+    {
+      "donor": "epk-fin-otchet/www/api/discovery.php",
+      "symbols": [
+        "cfg",
+        "dnorm",
+        "ufVariants"
+      ],
+      "sha256_12": "626a3014d105",
+      "bytes": 14427,
+      "lines": 272,
+      "cited_ranges": [
+        "12-132"
+      ]
+    },
+    {
+      "donor": "kg-abris/tools/b24.php",
+      "symbols": [
+        "b24_base",
+        "b24_mask",
+        "b24_call"
+      ],
+      "sha256_12": "8cce320f8fd5",
+      "bytes": 4715,
+      "lines": 137,
+      "cited_ranges": [
+        "1-136"
+      ]
+    },
+    {
+      "donor": "kg-crmsla360/www/api/_svc-export-xlsx.php",
+      "symbols": [
+        "exportXlsxWriteFile",
+        "exportXlsxProgress",
+        "exportXlsxApplyDynamicColumnWidths"
+      ],
+      "sha256_12": "31f9b53bceb9",
+      "bytes": 29277,
+      "lines": 762,
+      "cited_ranges": []
+    },
+    {
+      "donor": "kg-crmsla360/www/api/vendor/SimpleXLSXGen.php",
+      "symbols": [
+        "__construct",
+        "setProgressCallback",
+        "_progress"
+      ],
+      "sha256_12": "6235a73ac39d",
+      "bytes": 67644,
+      "lines": 1404,
+      "cited_ranges": []
+    },
+    {
+      "donor": "kg-crmsla360/www/assets/ui-controls.js",
+      "symbols": [
+        "labelText",
+        "setBooleanAria",
+        "valueDescriptor"
+      ],
+      "sha256_12": "c2c919e5ab74",
+      "bytes": 46795,
+      "lines": 1280,
+      "cited_ranges": []
+    },
+    {
+      "donor": "kg-crmsla360/www/src/Jobs/JobRepository.php",
+      "symbols": [
+        "__construct",
+        "canonicalFingerprint",
+        "start"
+      ],
+      "sha256_12": "c9975c82e60b",
+      "bytes": 58093,
+      "lines": 1446,
+      "cited_ranges": [
+        "56-660"
+      ]
+    },
+    {
+      "donor": "kg-lurv/www/api/kg-document-renderer.php",
+      "symbols": [
+        "kgRenderTimesheet",
+        "kgRenderTimesheetPdf"
+      ],
+      "sha256_12": "afe91e32e4f1",
+      "bytes": 9174,
+      "lines": 150,
+      "cited_ranges": [
+        "5-63"
+      ]
+    },
+    {
+      "donor": "kg-lurv/www/api/session-refresh.php",
+      "symbols": [
+        "sessionRefreshFail"
+      ],
+      "sha256_12": "ead69fe72a17",
+      "bytes": 4757,
+      "lines": 125,
+      "cited_ranges": [
+        "1-124"
+      ]
+    },
+    {
+      "donor": "lokiclub-table/www/api/crm-meta.php",
+      "symbols": [
+        "metaCacheFile",
+        "metaCached",
+        "fieldEnumMap"
+      ],
+      "sha256_12": "d90574360041",
+      "bytes": 5621,
+      "lines": 111,
+      "cited_ranges": [
+        "17-111"
+      ]
+    },
+    {
+      "donor": "onegroup-import/www/api/import-lib.php",
+      "symbols": [
+        "importScalarString",
+        "importNormalizeLabel",
+        "importNormalizeEnumValue"
+      ],
+      "sha256_12": "79056a120c86",
+      "bytes": 27863,
+      "lines": 619,
+      "cited_ranges": [
+        "43-225"
+      ]
+    },
+    {
+      "donor": "onegroup-import/www/js/app.js",
+      "symbols": [
+        "Select",
+        "closeAllSelects",
+        "init"
+      ],
+      "sha256_12": "caf2ee0c52e3",
+      "bytes": 57402,
+      "lines": 1413,
+      "cited_ranges": [
+        "273-560"
+      ]
+    },
+    {
+      "donor": "reteildatacenter-tasksemails/www/bin/process.php",
+      "symbols": [
+        "logline",
+        "runJob"
+      ],
+      "sha256_12": "f3327254dbf4",
+      "bytes": 3658,
+      "lines": 89,
+      "cited_ranges": [
+        "19-53"
+      ]
+    },
+    {
+      "donor": "zavod-energon-customfields/www/api/uf-type.php",
+      "symbols": [
+        "ufHandlerUrl",
+        "ufResultOkOrExists",
+        "ensureUserFieldTypeRegistered"
+      ],
+      "sha256_12": "b9f2e86d71ed",
+      "bytes": 3495,
+      "lines": 82,
+      "cited_ranges": []
+    },
+    {
+      "donor": "zorin-list-manager/tools/js-load-harness.js",
+      "symbols": [
+        "stubEl"
+      ],
+      "sha256_12": "4e75ad4d658c",
+      "bytes": 5486,
+      "lines": 100,
+      "cited_ranges": []
+    },
+    {
+      "donor": "zorin-list-manager/www/api/_svc-bulk-jobs.php",
+      "symbols": [
+        "bulkJobsPath",
+        "bulkJobsDefault",
+        "bulkJobsValidateState"
+      ],
+      "sha256_12": "bdff0c5fd2eb",
+      "bytes": 61830,
+      "lines": 1431,
+      "cited_ranges": []
+    },
+    {
+      "donor": "zorin-list-manager/www/js/table.js",
+      "symbols": [
+        "renderColumnsPanel",
+        "positionColumnsPanelOverlay",
+        "setColumnsPanelOpen"
+      ],
+      "sha256_12": "5d17ae81b592",
+      "bytes": 42636,
+      "lines": 734,
+      "cited_ranges": [
+        "1-733"
+      ]
+    }
+  ]
+}

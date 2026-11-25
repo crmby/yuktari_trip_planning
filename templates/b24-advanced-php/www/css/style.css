@@ -1,0 +1,23 @@
+/*
+ * Стили КОНКРЕТНОГО проекта.
+ *
+ * Здесь почти пусто намеренно: общая тёмная база и готовые компоненты уже
+ * подключены (css/tokens.css и css/components.css). Пишите тут только то, что
+ * относится к этому приложению, и опирайтесь на переменные — тогда смена
+ * акцента под заказчика делается одной строкой, а не переписыванием правил.
+ *
+ * Пример:
+ *   .deal-row.is-overdue { border-left: 3px solid var(--danger); }
+ *   .amount { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+ *
+ * Свой цвет проекта — переопределением токена, а не новым цветом по месту:
+ *   :root { --accent: #7b61ff; }
+ */
+
+code {
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: .92em;
+}

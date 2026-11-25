@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- ИМЯ ПРИЛОЖЕНИЯ: впиши его сюда — js/app.js покажет его в шапке. Домен
+       портала, версию выпуска и индикатор связи шапка заполняет сама. -->
+  <title>Приложение</title>
+  <!-- Порядок важен: токены (цвета, шрифт) → компоненты → стили проекта.
+       __V__ заменяется на время правки КАЖДОГО файла при отдаче страницы
+       (index.php). Руками число не вписывать: забытый бамп означает, что
+       человек после правки видит вчерашнюю версию, а жёсткой перезагрузки
+       внутри портала у него нет. -->
+  <link rel="stylesheet" href="css/tokens.css?v=__V__">
+  <link rel="stylesheet" href="css/components.css?v=__V__">
+  <link rel="stylesheet" href="css/style.css?v=__V__">
+  <!-- B24 JS SDK подключается в iframe-режиме автоматически. Подключаем сами
+       только для подстраховки + чтобы открытие вне iframe не падало. -->
+  <script src="//api.bitrix24.com/api/v1/"></script>
+</head>
+<body>
+  <!--
+    КАРКАС: слева разделы, справа рабочая область. Такой же во всех приложениях
+    компании — человек, открыв второе приложение, не учится читать интерфейс
+    заново. Высоту документа и iframe синхронизирует js/frame.js; .content не
+    заводит второй независимый scroll-контейнер.
+  -->
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">◆</div>
+        <div>
+          <div class="logo-text" id="app-name">Приложение</div>
+          <div class="logo-sub" id="app-portal">портал</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav">
+        <button class="nav-item is-active" data-tab="work"><span class="nav-icon">▤</span>Работа</button>
+      </nav>
+
+      <!-- Служебные разделы видит только администратор приложения: обычному
+           сотруднику состояние установки и список доступа не нужны. -->
+      <nav class="nav hidden" id="nav-admin">
+        <div class="nav-group">Настройка</div>
+        <button class="nav-item" data-tab="settings"><span class="nav-icon">⚙</span>Настройки</button>
+        <button class="nav-item" data-tab="access"><span class="nav-icon">◉</span>Доступ</button>
+        <button class="nav-item" data-tab="log"><span class="nav-icon">☰</span>Журнал</button>
+      </nav>
+
+      <div class="sidebar-foot" id="app-version"></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h1 id="app-title">Работа</h1>
+        <div class="topbar-spacer"></div>
+        <div class="conn" id="conn" hidden><span class="conn-dot"></span><span id="conn-text">портал</span></div>
+      </header>
+
+      <div class="content">
+        <!-- ЭКРАН ПРОЕКТА: всё, что делает приложение, живёт здесь. -->
+        <section class="pane" data-pane="work">
+          <div class="card">
+            <div class="card-title">Отсюда начинается проект</div>
+            <p>Замените этот блок интерфейсом приложения. Готовое под рукой:
+              <code>ui.api()</code> — запрос к своему эндпоинту,
+              <code>ui.toast()</code> — сообщить,
+              <code>ui.confirmBox()</code> — спросить,
+              <code>ui.showState()</code> — показать загрузку, пустоту или ошибку,
+              <code>ui.select() / ui.number() / ui.search() / ui.dateField() / ui.switchBox() / ui.chipGroup()</code>
+              — свои контролы вместо системных.</p>
+          </div>
+
+          <!-- ДОЛГАЯ ЗАДАЧА: экран только ставит и показывает, считает фоновый
+               рабочий. Поэтому закрытое окно ничего не обрывает. -->
+          <div class="card">
+            <div class="card-title">Долгая задача</div>
+            <div id="task-box" class="state"><div class="spinner"></div>Проверяем, есть ли работа…</div>
+          </div>
+        </section>
+
+        <!-- НАСТРОЙКИ: форма собирается из описания полей (api/settings-schema.php),
+             руками под каждый ключ ничего не рисуется. -->
+        <section class="pane hidden" data-pane="settings">
+          <div class="card">
+            <div class="card-title">Настройки приложения</div>
+            <div id="settings-form" class="state"><div class="spinner"></div>Читаем настройки…</div>
+            <div class="settings-foot hidden" id="settings-foot">
+              <button class="btn btn-primary" id="settings-save">Сохранить</button>
+              <span class="small muted" id="settings-note"></span>
+            </div>
+          </div>
+
+          <!-- СЛУЖЕБНОЕ: два действия, которым больше негде жить, — вернуть
+               пропавшие в портале места приложения и снять операцию с
+               неизвестным исходом. Раздел «Состояние» убран 26.08.2026: он
+               показывал сведения для разработчика, а эти кнопки нужны
+               администратору портала. -->
+          <div class="card">
+            <div class="card-title">Служебное</div>
+            <div id="service-box" class="state"><div class="spinner"></div>Спрашиваем портал…</div>
+          </div>
+        </section>
+
+        <!-- ДОСТУП: владелец добавляет сотрудников и отделы сам, без разработчика. -->
+        <section class="pane hidden" data-pane="access">
+          <div class="card">
+            <div class="card-title">Кто может пользоваться приложением</div>
+            <div class="table-wrap">
+              <table class="table" id="acl-table">
+                <thead><tr><th>Кто</th><th>Права</th><th></th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div id="owner-transfer" class="alert alert-warn hidden">
+              <b>Передать владение себе</b>
+              <p>Доступ прежнего владельца и его открытые вкладки будут отозваны. Действие доступно только сразу после подтверждения прав администратора порталом.</p>
+              <button class="btn btn-sm btn-danger" id="btn-claim-owner">Стать владельцем</button>
+            </div>
+
+            <!-- div, а не label: внутри лежат СВОИ контролы, и <label> без for
+                 отдаёт клик первому попавшемуся элементу внутри себя. Клик по
+                 подписи «Кому дать доступ» нажимал крестик первого выбранного
+                 человека — он молча пропадал из списка (находка ревью 09.08.2026).
+                 CSS не задет: правила .field классовые.
+                 У подписи свой id: соседний span именем контрола НЕ становится —
+                 связь даёт только aria-labelledby, который ставит сам контрол. -->
+            <div class="toolbar" style="margin-top:14px">
+              <div class="field" style="flex:1;min-width:240px">
+                <span id="l-user-picker">Кому дать доступ — сотрудники и отделы</span>
+                <div id="user-picker"></div>
+              </div>
+              <div class="field">
+                <span id="l-user-role">Права</span>
+                <div id="user-role"></div>
+              </div>
+              <!-- Выключенная кнопка обязана говорить, чего не хватает: иначе это
+                   выглядит как «приложение сломалось». Подсказку снимает тот же
+                   код, что снимает disabled. -->
+              <button class="btn btn-primary" id="btn-acl-add" disabled
+                      title="Сначала выберите сотрудника или отдел">Дать доступ</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ЖУРНАЛ: то же самое, что видит разработчик с сервера. -->
+        <section class="pane hidden" data-pane="log">
+          <div class="card">
+            <div class="card-title">Что происходило в приложении</div>
+            <div class="toolbar">
+              <div id="log-day"></div>
+              <div id="log-level"></div>
+              <div id="log-q"></div>
+            </div>
+            <div class="table-wrap">
+              <table class="table" id="log-table">
+                <thead><tr><th>Когда</th><th>Что</th><th>Подробности</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="toolbar" id="log-pager" aria-label="Страницы журнала">
+              <button type="button" class="btn btn-sm" id="log-prev" disabled>← Назад</button>
+              <span id="log-page-status" role="status">Страница 1 · до 25 записей</span>
+              <button type="button" class="btn btn-sm" id="log-next" disabled>Дальше →</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/ui.js?v=__V__"></script>
+  <script src="js/controls.js?v=__V__"></script>
+  <script src="js/frame.js?v=__V__"></script>
+  <script src="js/app.js?v=__V__"></script>
+</body>
+</html>

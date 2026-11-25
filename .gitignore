@@ -1,0 +1,16 @@
+node_modules/
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
+data/
+var/
+dist/
+coverage/
+*.log
+*.tmp
+*.tar.gz
+.DS_Store
+Thumbs.db
+__pycache__/

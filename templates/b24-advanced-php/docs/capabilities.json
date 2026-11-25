@@ -1,0 +1,469 @@
+{
+  "_": "МАШИННЫЙ РЕЕСТР ГОТОВЫХ БЛОКОВ. capabilities — защищённый exact-набор 20 блоков самого шаблона; top-level companion_files — дополнительные файлы этих template capabilities. project_extensions — отдельные endpoint проекта, каждый со своим tests/checks и per-extension companions для принадлежащих ему helper/library; они не становятся готовыми блоками будущих проектов. BLOCKS.md, MAP.md и RECIPES.md — человеческие пересказы template capabilities. Статусы: ready — пользоваться и не писать своё; experimental — работает и проверено машинно, но живого портала не видело; absent — в шаблоне нет, писать можно. Поле checks — ТОЧНЫЕ названия выполненных проверок поведения.",
+  "version": 2,
+  "project_extensions": [],
+  "companion_files": {
+    "www/api/acl.php": "access-acl",
+    "www/api/bind.php": "events-bind",
+    "www/api/event.php": "portal-events",
+    "www/api/export-csv.php": "dates-money-csv",
+    "www/api/fetch-all-compat.php": "portal-transport",
+    "www/api/health.php": "portal-capability",
+    "www/api/logs.php": "journal",
+    "www/api/ops.php": "unknown-outcome",
+    "www/api/session.php": "access-acl",
+    "www/api/settings-schema.php": "api-entry",
+    "www/api/settings.php": "api-entry",
+    "www/api/task.php": "long-task",
+    "www/api/users.php": "access-acl"
+  },
+  "ready_ui": {
+    "ui.select": "www/js/controls.js",
+    "ui.number": "www/js/controls.js",
+    "ui.search": "www/js/controls.js",
+    "ui.dateField": "www/js/controls.js",
+    "ui.switchBox": "www/js/controls.js",
+    "ui.chipGroup": "www/js/controls.js",
+    "ui.pickPeople": "www/js/controls.js",
+    "ui.action": "www/js/controls.js",
+    "ui.confirmBox": "www/js/ui.js",
+    "ui.toast": "www/js/ui.js",
+    "ui.showState": "www/js/ui.js"
+  },
+  "capabilities": [
+    {
+      "id": "portal-transport",
+      "title": "Запросы к порталу Битрикс24",
+      "status": "ready",
+      "file": "www/api/b24.php",
+      "entry": [
+        "b24"
+      ],
+      "when": "любое обращение к REST портала: один вызов, пакет, список, мутация; каждая операция получает метку в журнале",
+      "forbids": "свой curl к порталу, своя пагинация, свой повтор при 429",
+      "tests": [
+        "tests/b24_test.php"
+      ],
+      "checks": [
+        "fetchAll не выдаёт пустую partial-выборку при maxPages=0",
+        "fetchAllBatched отклоняет нулевой hardLimit до сетевого вызова"
+      ]
+    },
+    {
+      "id": "state-store",
+      "title": "Состояние приложения файлами вместо базы",
+      "status": "ready",
+      "file": "www/api/store.php",
+      "entry": [
+        "storeRead",
+        "storeWrite",
+        "storeUpdate",
+        "withKeyLock"
+      ],
+      "when": "любое сохранение состояния приложения",
+      "forbids": "своё чтение/запись json, правка файла без замка",
+      "tests": [
+        "tests/store_test.php"
+      ],
+      "checks": [
+        "ОБРЕЗАННЫЙ ФАЙЛ СОСТОЯНИЯ НЕ СТАНОВИТСЯ ПУСТЫМ",
+        "замок одного ключа не держит другой ключ"
+      ]
+    },
+    {
+      "id": "heavy-response-cache",
+      "title": "Память о тяжёлом ответе портала",
+      "status": "ready",
+      "file": "www/api/cache.php",
+      "entry": [
+        "cacheRemember",
+        "cachePeek",
+        "cacheForget"
+      ],
+      "when": "ответ портала дорогой и меняется редко",
+      "forbids": "свой файл-кэш рядом",
+      "tests": [
+        "tests/store_test.php",
+        "tests/modules_test.php"
+      ],
+      "checks": [
+        "отказ загрузчика проходит наружу и ничего не запоминает",
+        "файлы памяти перечисляются для уборки"
+      ]
+    },
+    {
+      "id": "foreign-http",
+      "title": "Обращение к чужому сервису (не Битрикс)",
+      "status": "ready",
+      "file": "www/api/lib.php",
+      "entry": [
+        "httpJson",
+        "httpRetryAfterSeconds"
+      ],
+      "when": "любой внешний вызов кроме портала",
+      "forbids": "curl без таймаута, слепой повтор изменяющего запроса",
+      "tests": [
+        "tests/http_test.php"
+      ],
+      "checks": [
+        "ЗАПРОС ВНУТРЬ МАШИНЫ ОТКЛОНЯЕТСЯ БЕЗ ЯВНОГО РАЗРЕШЕНИЯ",
+        "МОЛЧАЩИЙ СЕРВИС НЕ ДЕРЖИТ ВЫЗОВ БЕСКОНЕЧНО"
+      ]
+    },
+    {
+      "id": "api-entry",
+      "title": "Точки входа и единый вид ответа",
+      "status": "ready",
+      "file": "www/api/http.php",
+      "entry": [
+        "apiBoot",
+        "apiOk",
+        "apiFail",
+        "apiEnum"
+      ],
+      "when": "новый эндпоинт в www/api",
+      "forbids": "своя проверка сессии и прав, свой формат ответа",
+      "tests": [
+        "tests/security_test.php",
+        "tests/http_test.php"
+      ],
+      "checks": [
+        "без пропуска эндпоинт отвечает отказом",
+        "одной cookie для доступа к эндпоинту недостаточно"
+      ]
+    },
+    {
+      "id": "journal",
+      "title": "Журнал приложения и след действий",
+      "status": "ready",
+      "file": "www/api/journal.php",
+      "entry": [
+        "appLog",
+        "logRef"
+      ],
+      "when": "любая запись в журнал и любой след мутации",
+      "forbids": "error_log, свой файл лога, сырой текст исключения",
+      "tests": [
+        "tests/store_test.php",
+        "tests/gate_test.php",
+        "tests/resource_limits_test.php"
+      ],
+      "checks": [
+        "ПРИМАНКА-СЕКРЕТ НЕ НАШЛАСЬ В ЖУРНАЛЕ НИ РАЗУ",
+        "сырая ошибка через переменную ловится",
+        "oversized journal-запись заменяется явным bounded marker",
+        "конкурентная ротация журнала сохраняет cap, prefix и все записи"
+      ]
+    },
+    {
+      "id": "portal-events",
+      "title": "События портала: приём, очередь, разбор",
+      "status": "ready",
+      "file": "www/api/queue.php",
+      "entry": [
+        "queueAppendLimited",
+        "queueEventLogLabel"
+      ],
+      "when": "приложение подписано на события портала",
+      "forbids": "своя очередь и свой разбор входящего события",
+      "tests": [
+        "tests/review_fixes_test.php"
+      ],
+      "checks": [
+        "одно тяжёлое событие отклоняется до добавления в inbox",
+        "УЖЕ ОБРАБОТАННОЕ СОБЫТИЕ НЕ ВОЗВРАЩАЕТСЯ В ОЧЕРЕДЬ ВТОРЫМ РАЗБОРОМ"
+      ],
+      "project_entry": [
+        "handleEvent (www/bin/process.php)"
+      ],
+      "project_note": "Код проекта пишется в projectHandleEvent() файла www/api/project-hooks.php — его зовёт handleEvent() ядра, сам файл ядра не правят; функции из entry зовёт сам движок."
+    },
+    {
+      "id": "events-bind",
+      "title": "Поддержание подписок на события",
+      "status": "ready",
+      "file": "www/api/events-bind.php",
+      "entry": [
+        "eventsReconcile",
+        "eventsSpec",
+        "bindEvents"
+      ],
+      "when": "надо сверить желаемый набор подписок с привязанным",
+      "forbids": "своя сверка привязок",
+      "tests": [
+        "tests/modules_test.php"
+      ],
+      "checks": [
+        "подтверждённая порталом подписка остаётся подтверждённой",
+        "настоящий отказ остаётся ошибкой, а не прощается заодно"
+      ]
+    },
+    {
+      "id": "long-task",
+      "title": "Долгая задача: порции, отмена, продолжение",
+      "status": "ready",
+      "file": "www/api/task-state.php",
+      "entry": [
+        "taskStart",
+        "taskClaimStep",
+        "taskProgress",
+        "taskFinish",
+        "taskPendingStep",
+        "taskStepKey",
+        "taskMarkUnknown",
+        "taskReconcileStep"
+      ],
+      "when": "работа не помещается в один запрос",
+      "forbids": "свой счётчик прогресса, работа без разрешения на порцию, повтор прерванной порции",
+      "tests": [
+        "tests/task_test.php"
+      ],
+      "checks": [
+        "ОТМЕНА ДО ПЕРВОЙ ПОРЦИИ ЗАПРЕЩАЕТ ЕЁ ВЫПОЛНЯТЬ",
+        "ОДНОШАГОВАЯ ЗАДАЧА ПОКАЗЫВАЕТ ЧЕСТНЫЕ ЦИФРЫ, А НЕ 0 ИЗ 0",
+        "ЖЁСТКАЯ СМЕРТЬ ОСТАВЛЯЕТ КВИТАНЦИЮ НАЧАТОЙ ПОРЦИИ",
+        "ПОСЛЕ ОБРЫВА ПОРЦИИ ФОН НЕ ДЕЛАЕТ ЕЁ ВТОРОЙ РАЗ",
+        "THROWABLE ПОСЛЕ CLAIM ОСТАВЛЯЕТ DURABLE UNKNOWN RECEIPT",
+        "CONCURRENT START НЕ СТИРАЕТ RECEIPT ВО ВРЕМЯ READ-BACK",
+        "PERSISTED UNKNOWN ПОВТОРНО ВЫЗЫВАЕТ PROJECT READ-BACK НА СЛЕДУЮЩЕМ TICK",
+        "NULL FIRST, RESOLVED NEXT TICK: CAS СНИМАЕТ RECEIPT И ТОЛЬКО ПОТОМ ПРОДОЛЖАЕТ",
+        "UI UNKNOWN НЕ ПРЕДЛАГАЕТ ОБЫЧНЫЙ RESTART/FORGET"
+      ],
+      "project_entry": [
+        "taskStep (www/bin/process.php)",
+        "taskReconcileUnknownStep (www/bin/process.php)"
+      ],
+      "project_note": "Код проекта пишется в projectTaskStep() файла www/api/project-hooks.php — одна порция работы, её зовёт taskStep() ядра. Если исход unknown, projectReconcileUnknownStep() там же делает свежий project-specific read-back и возвращает доказанный исход; default null оставляет задачу fail-closed. Функции из entry держат состояние и применяют reconciliation CAS-ом."
+    },
+    {
+      "id": "unknown-outcome",
+      "title": "Один раз и не больше (неизвестный исход внешнего вызова)",
+      "status": "ready",
+      "file": "www/api/access.php",
+      "entry": [
+        "runOnce",
+        "runOnceForget"
+      ],
+      "when": "действие может выполниться дважды при повторе",
+      "forbids": "повтор мутации без ключа, снятие ключа без сверки увиденного состояния",
+      "tests": [
+        "tests/store_test.php"
+      ],
+      "checks": [
+        "после любого сбоя слепой повтор блокируется как unknown",
+        "сбой работы доходит до вызывающего, а не проглатывается",
+        "ПОЗДНЕЕ СНЯТИЕ НЕ СТИРАЕТ УЖЕ ЗАПИСАННОЕ «СДЕЛАНО»"
+      ]
+    },
+    {
+      "id": "placements",
+      "title": "Место приложения в портале",
+      "status": "ready",
+      "file": "www/api/placements.php",
+      "entry": [
+        "placementSpec",
+        "placementHandlerUrl"
+      ],
+      "when": "приложение встраивается в карточку, меню, вкладку",
+      "forbids": "своя привязка плейсмента",
+      "tests": [
+        "tests/modules_test.php"
+      ],
+      "checks": [
+        "сбой чтения плейсментов не маскируется под пустой список",
+        "успешный первый bind подтверждается read-back через placement.get"
+      ]
+    },
+    {
+      "id": "portal-plan",
+      "title": "Тариф портала и темп запросов по его лимитам",
+      "status": "ready",
+      "file": "www/api/plan.php",
+      "entry": [
+        "planRefresh",
+        "planRatePerSecond",
+        "planBucket",
+        "planHuman"
+      ],
+      "when": "любое обращение к порталу: клиент сам держит темп; для облака — по тарифу (Энтерпрайз 5 запросов/с и корзина 250, прочие 2 и 50); для коробки облачная leaky-bucket корзина интенсивности не применяется, а серверная ёмкость, REST resource guard и пакеты учитываются отдельно",
+      "forbids": "свой расчёт задержек между запросами, жёсткое число запросов в секунду в коде, догадки о тарифе по названию, неквалифицированные утверждения «коробка без лимитов»",
+      "tests": [
+        "tests/plan_test.php"
+      ],
+      "checks": [
+        "ПРИ НЕИЗВЕСТНОМ ТАРИФЕ БЕРЁТСЯ САМЫЙ СТРОГИЙ ПРЕДЕЛ",
+        "ОБЩИЙ ТЕМП ДЕРЖИТСЯ И ПРИ ШЕСТИ ПРОЦЕССАХ, А НЕ ТОЛЬКО ПРИ ДВУХ"
+      ]
+    },
+    {
+      "id": "portal-capability",
+      "title": "Проверка доступности методов портала (важно для коробки)",
+      "status": "ready",
+      "file": "www/api/capability.php",
+      "entry": [
+        "capRefresh",
+        "capAllowed",
+        "capMissing",
+        "capMissingRequired",
+        "capHuman"
+      ],
+      "when": "до начала работы с порталом: выданное право и работающий метод — разные вещи, особенно на коробке (замер: при 71 праве crm.item.list вызвать нельзя)",
+      "forbids": "считать scope доказательством доступности метода, узнавать об отказе в середине выгрузки, запрещать работу по непроверенному или невнятному ответу портала",
+      "tests": [
+        "tests/capability_test.php"
+      ],
+      "checks": [
+        "НЕДОСТУПНЫЙ МЕТОД ОПОЗНАН ПРИ ВЫДАННОМ ПРАВЕ",
+        "СВЕЖАЯ КАРТА НЕ СКРЫВАЕТ НЕПРОВЕРЕННЫЙ МЕТОД"
+      ]
+    },
+    {
+      "id": "crm-dictionary",
+      "title": "Названия вместо кодов: воронки, стадии, источники",
+      "status": "ready",
+      "file": "www/api/crm-dict.php",
+      "entry": [
+        "crmDict",
+        "crmDictStageName"
+      ],
+      "when": "нужно показать человеку название вместо кода",
+      "forbids": "свой справочник и свой кэш к нему",
+      "tests": [
+        "tests/crm_dict_test.php"
+      ],
+      "checks": [
+        "ПОРТАЛ МОЛЧИТ — ОТДАЁМ СОХРАНЁННЫЙ СПРАВОЧНИК, А НЕ ПУСТОЙ",
+        "воронки сделок попали в справочник с названиями"
+      ]
+    },
+    {
+      "id": "dates-money-csv",
+      "title": "Даты, деньги, выгрузки",
+      "status": "ready",
+      "file": "www/api/fmt.php",
+      "entry": [
+        "b24Day",
+        "b24Range",
+        "money",
+        "moneyStr"
+      ],
+      "when": "любая работа с датой портала, суммой или выгрузкой",
+      "forbids": "strtotime, new Date, round для денег",
+      "tests": [
+        "tests/modules_test.php",
+        "tests/b24_test.php"
+      ],
+      "checks": [
+        "копейки печатаются с разрядами и запятой",
+        "read-back признаёт день из fmt.php и ISO-дату портала одним днём"
+      ]
+    },
+    {
+      "id": "access-acl",
+      "title": "Доступ: владелец, список, роли",
+      "status": "ready",
+      "file": "www/api/access.php",
+      "entry": [
+        "aclLoad",
+        "aclUpdate",
+        "roleAtLeast",
+        "auditLog"
+      ],
+      "when": "решение «кому можно»",
+      "forbids": "своя проверка прав по DOMAIN или ID",
+      "tests": [
+        "tests/security_test.php",
+        "tests/store_test.php"
+      ],
+      "checks": [
+        "доступ пропадает сразу после снятия прав, не дожидаясь конца дня",
+        "действие попало в журнал с автором"
+      ]
+    },
+    {
+      "id": "portal-user-fields",
+      "title": "Свои поля в карточке портала",
+      "status": "experimental",
+      "file": "www/api/uf.php",
+      "entry": [
+        "ufEnsure",
+        "ufFieldName"
+      ],
+      "when": "приложению нужны свои поля в CRM",
+      "forbids": "своё заведение полей через crm.*.userfield.add",
+      "tests": [
+        "tests/uf_test.php"
+      ],
+      "why_experimental": "контракт имени проверен по официальной документации и заглушке портала, но живого портала блок не видел",
+      "checks": [
+        "ПОВТОР НЕ СОЗДАЁТ ДУБЛЕЙ",
+        "ЧУЖОЕ ПОЛЕ НА ПОРТАЛЕ НЕ СЧИТАЕТСЯ СВОИМ"
+      ]
+    },
+    {
+      "id": "user-notifications",
+      "title": "Сказать человеку в портале",
+      "status": "experimental",
+      "file": "www/api/notify.php",
+      "entry": [
+        "notifyQueue",
+        "notifyDrain",
+        "notifyFailed"
+      ],
+      "when": "приложению надо уведомить сотрудника",
+      "forbids": "im.notify.system.add прямо из запроса человека",
+      "tests": [
+        "tests/notify_test.php"
+      ],
+      "why_experimental": "очередь, повторы и гонка проверены машинно; доставка настоящим порталом не подтверждена",
+      "checks": [
+        "УВЕДОМЛЕНИЕ НЕ ПОТЕРЯНО",
+        "ПРИ ПРЕДЕЛЕ В ПЯТЬ ПОПЫТОК ПОРТАЛ ЗОВУТ РОВНО ПЯТЬ РАЗ"
+      ]
+    },
+    {
+      "id": "return-points",
+      "title": "Вернуться к проверенному состоянию",
+      "status": "experimental",
+      "file": "scripts/snap.sh",
+      "entry": [
+        "save",
+        "list",
+        "diff",
+        "restore",
+        "data-save",
+        "data-restore"
+      ],
+      "when": "перед рискованной гипотезой и после выкладки",
+      "forbids": "ручной откат правок по памяти",
+      "tests": [
+        "tests/snap_test.php"
+      ],
+      "why_experimental": "слой данных и возврат проверены на игрушечных проектах; на боевом проекте возврат ни разу не применялся",
+      "checks": [
+        "ПОДМЕНА СОДЕРЖИМОГО ПРИ ТОМ ЖЕ ЧИСЛЕ ФАЙЛОВ ЛОВИТСЯ",
+        "ВОЗВРАТ НА НЕЗАВЕРШЁННЫЙ СНИМОК ДАННЫХ ОТКЛОНЁН"
+      ]
+    },
+    {
+      "id": "fatal-response",
+      "title": "Ответ человеку, когда запрос упал совсем",
+      "status": "ready",
+      "file": "www/api/lib.php",
+      "entry": [
+        "installFailureHandler",
+        "appChangesStarted",
+        "appChangesMayBeApplied"
+      ],
+      "when": "первая строка любой точки входа; appChangesStarted — перед своим изменением данных, о котором клиент портала не знает",
+      "forbids": "белый экран, голый 500 и обещание «данные целы» там, где это не проверено",
+      "tests": [
+        "tests/fatal_test.php"
+      ],
+      "checks": [
+        "ЧЕЛОВЕК ВИДИТ НЕ ПУСТОЙ ЭКРАН",
+        "ФРОНТ ВИДИТ МАШИННЫЙ ПРИЗНАК: ИЗМЕНЕНИЯ МОГЛИ ПРИМЕНИТЬСЯ"
+      ]
+    }
+  ]
+}

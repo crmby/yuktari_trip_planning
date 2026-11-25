@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Стенд стиля bx-app</title>
+  <!--
+    СТЕНД ЕДИНОГО СТИЛЯ. Открывается напрямую (file:// или любой статикой) и
+    показывает ВСЕ готовые куски интерфейса разом: каркас, карточки, цифры,
+    чипы, таблицу, состояния, свои контролы, диалог, тост.
+
+    Зачем отдельная страница: проверка «класс объявлен в css» проходит и на
+    сломанной вёрстке. Смотреть надо глазами и мерить в браузере — этим и
+    занимается tests/ui-stand.js.
+
+    Лежит в tests/, а не под веб-корнем: любой файл в www — это вход, который
+    надо охранять, а стенду охрана не нужна, ему нужно, чтобы его не выложили.
+  -->
+  <link rel="stylesheet" href="../www/css/tokens.css">
+  <link rel="stylesheet" href="../www/css/components.css">
+  <link rel="stylesheet" href="../www/css/style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">◆</div>
+        <div>
+          <div class="logo-text">Стенд стиля</div>
+          <div class="logo-sub">bx-app</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item is-active"><span class="nav-icon">▤</span>Работа<span class="nav-count">12</span></button>
+        <button class="nav-item"><span class="nav-icon">◈</span>Состояние</button>
+      </nav>
+      <nav class="nav">
+        <div class="nav-group">Настройка</div>
+        <button class="nav-item"><span class="nav-icon">◉</span>Доступ</button>
+        <button class="nav-item"><span class="nav-icon">☰</span>Журнал</button>
+      </nav>
+      <div class="sidebar-foot">версия 1.0</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h1>Все блоки разом</h1>
+        <div class="topbar-spacer"></div>
+        <div class="conn is-ok"><span class="conn-dot"></span><span>портал на связи</span></div>
+      </header>
+
+      <div class="content">
+        <div class="kpis">
+          <div class="kpi"><div class="kpi-label">Обработано</div><div class="kpi-value">1 284</div><div class="kpi-sub">за сегодня</div></div>
+          <div class="kpi"><div class="kpi-label">С ошибкой</div><div class="kpi-value is-bad">17</div><div class="kpi-sub">нужно посмотреть</div></div>
+          <div class="kpi"><div class="kpi-label">В очереди</div><div class="kpi-value is-warn">42</div><div class="kpi-sub">ждут обработки</div></div>
+          <div class="kpi"><div class="kpi-label">Успешно</div><div class="kpi-value is-ok">98%</div><div class="kpi-sub">доля за неделю</div></div>
+        </div>
+
+        <div class="grid-2 mt">
+          <div class="card">
+            <div class="card-title">Свои контролы вместо системных</div>
+            <!-- У подписи свой id, и контрол получает его через labelledBy:
+                 соседний span сам по себе НЕ становится именем контрола —
+                 диктор читает «кнопка», и человек не знает, что это за поле. -->
+            <div class="field"><span id="l-select">Раскрывающийся список</span><div id="c-select"></div></div>
+            <div class="field"><span id="l-select-long">Список с поиском</span><div id="c-select-long"></div></div>
+            <div class="field"><span id="l-number">Число</span><div id="c-number"></div>
+              <div class="field-hint" id="h-number">Шаг 10, от 0 до 500</div></div>
+            <div class="field"><span id="l-date">Дата</span><div id="c-date"></div></div>
+            <div class="field"><span id="l-search">Поиск</span><div id="c-search"></div></div>
+            <div class="row-gap"><div id="c-switch"></div></div>
+            <div class="mt" id="c-chips"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Выбор сотрудников и отделов</div>
+            <div class="field"><span id="l-picker">Кому дать доступ</span><div id="c-picker"></div></div>
+            <div class="progress mt">
+              <div class="progress-track"><div class="progress-fill" style="width:62%"></div></div>
+              <div class="progress-meta"><span>620 из 1000</span><span>осталось ~2 мин</span></div>
+            </div>
+            <div class="steps mt">
+              <span class="step is-done"><span class="step-n">✓</span>Файл</span><span class="step-sep"></span>
+              <span class="step is-active"><span class="step-n">2</span>Поля</span><span class="step-sep"></span>
+              <span class="step"><span class="step-n">3</span>Перенос</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Таблица</div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>Кто</th><th>Права</th><th>Доля</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="chip chip-tag chip-dept">Отдел продаж</span></td><td>Смотреть и менять</td>
+                      <td><div class="bar-row"><div class="bar-track"><div class="bar-fill" style="width:72%"></div></div><span class="bar-val">72%</span></div></td></tr>
+                  <tr><td>Иванов Пётр <span class="badge">владелец</span></td><td>Полные</td>
+                      <td><div class="bar-row"><div class="bar-track"><div class="bar-fill" style="width:41%"></div></div><span class="bar-val">41%</span></div></td></tr>
+                  <tr><td>Петрова Анна</td><td>Только смотреть</td>
+                      <td><div class="bar-row"><div class="bar-track"><div class="bar-fill" style="width:12%"></div></div><span class="bar-val">12%</span></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pager">
+              <button class="btn btn-sm">Назад</button>
+              <span class="pager-info">1–3 из 128</span>
+              <button class="btn btn-sm">Дальше</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Записи и плашки</div>
+            <div class="alert alert-error"><b>Портал ответил отказом</b><p>Проверьте права приложения и повторите.</p><button class="btn btn-sm">Повторить</button></div>
+            <div class="rows">
+              <div class="row-item is-ok"><div class="row-icon">✓</div><div class="row-body"><div class="row-title">Сделка обновлена</div><div class="row-meta">10:24 · сотрудник №12</div></div></div>
+              <div class="row-item is-warn"><div class="row-icon">!</div><div class="row-body"><div class="row-title">Поле не заполнено</div><div class="row-meta">10:25</div><div class="row-note">Пропущено 3 записи</div></div></div>
+              <div class="row-item is-error"><div class="row-icon">×</div><div class="row-body"><div class="row-title">Портал не ответил</div><div class="row-meta">10:26 · код обращения a1b2c3</div></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card">
+            <div class="card-title">Кнопки</div>
+            <div class="row-gap">
+              <button class="btn btn-primary">Основное</button>
+              <button class="btn">Обычное</button>
+              <button class="btn btn-danger">Опасное</button>
+              <button class="btn btn-sm">Мелкое</button>
+              <button class="btn" disabled>Нельзя</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Состояния</div>
+            <div class="state"><div class="spinner"></div>Загружаем…</div>
+          </div>
+          <div class="card">
+            <div class="card-title">Пусто</div>
+            <div class="state"><b>Записей нет</b>За этот день ничего не происходило.</div>
+          </div>
+          <!-- Пустое состояние, СОБРАННОЕ КОДОМ (ui.showState): в приложении
+               человек видит именно его, а не разметку из шаблона страницы.
+               Пустой экран без подсказки читается как поломка. -->
+          <div class="card">
+            <div class="card-title">Пустое состояние из кода</div>
+            <div id="c-empty"></div>
+          </div>
+          <!-- ДЛИННЫЙ ТЕКСТ БЕЗ ПРОБЕЛОВ. Ссылка из журнала, идентификатор поля,
+               токен обращения — они приходят из портала и рвут вёрстку молча:
+               блок разъезжается вбок, и правый край уходит за экран. -->
+          <div class="card" id="card-long">
+            <div class="card-title">Длинный текст без пробелов</div>
+            <div class="rows">
+              <div class="row-item"><div class="row-body">
+                <div class="row-title" id="l-long">https://portal.bitrix24.ru/rest/1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/crm.item.list.json?filter[ufCrm1234567890]=оченьдлинноезначениебезпробелов</div>
+                <div class="row-meta">ссылка из журнала обращений</div>
+              </div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Диалог и сообщение</div>
+          <div class="row-gap">
+            <button class="btn" id="b-modal">Показать диалог</button>
+            <button class="btn" id="b-toast">Показать сообщение</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Действие по кнопке</div>
+          <div class="row-gap">
+            <button class="btn btn-primary" id="b-action">Провести операцию</button>
+            <button class="btn btn-danger" id="b-action-fail">Отказ портала</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toasts"></div>
+
+  <script src="../www/js/ui.js"></script>
+  <script src="../www/js/controls.js"></script>
+  <script>
+    // Все контролы стенда собраны в одном месте: живой прогон дёргает их
+    // методы (setError, get, destroy) — по разметке этого не проверить.
+    window.__ctl = {};
+    window.__ctl.select = ui.select('#c-select', {
+      labelledBy: 'l-select',
+      options: [
+        { value: 'view', label: 'Только смотреть' },
+        { value: 'edit', label: 'Смотреть и менять' },
+        { value: 'admin', label: 'Полные, включая доступ' },
+      ], value: 'edit',
+    });
+    // СПИСОК ОТ ВОСЬМИ ПУНКТОВ сам показывает строку поиска и уводит в неё фокус.
+    // Без такого списка на стенде проверять нечего: короткий список из трёх строк
+    // (выше) поле поиска не рисует, и весь клавиатурный сценарий длинного списка
+    // — стрелки, Enter, набор запроса — не исполнялся ни разу. Именно там он и был
+    // сломан: обработчик клавиш висел на кнопке, а фокус к этому моменту уже был в
+    // поле поиска (находка ревью 09.08.2026).
+    window.__ctl.selectLong = ui.select('#c-select-long', {
+      labelledBy: 'l-select-long',
+      options: [
+        { value: 1, label: 'Январь' }, { value: 2, label: 'Февраль' },
+        { value: 3, label: 'Март' }, { value: 4, label: 'Апрель' },
+        { value: 5, label: 'Май' }, { value: 6, label: 'Июнь' },
+        { value: 7, label: 'Июль' }, { value: 8, label: 'Август' },
+        { value: 9, label: 'Сентябрь' }, { value: 10, label: 'Октябрь' },
+        { value: 11, label: 'Ноябрь' }, { value: 12, label: 'Декабрь' },
+      ],
+      value: 8,
+    });
+    window.__ctl.number = ui.number('#c-number', {
+      labelledBy: 'l-number', describedBy: 'h-number',
+      value: 50, min: 0, max: 500, step: 10,
+    });
+    window.__ctl.date = ui.dateField('#c-date', { labelledBy: 'l-date', value: '2026-08-06' });
+    window.__ctl.search = ui.search('#c-search', { labelledBy: 'l-search', placeholder: 'Найти запись' });
+    window.__ctl.switchBox = ui.switchBox('#c-switch', { value: true, label: 'Боевой режим' });
+    window.__ctl.chips = ui.chipGroup('#c-chips', {
+      label: 'Что показывать',
+      options: [
+        { value: 'all', label: 'Все' },
+        { value: 'err', label: 'С ошибкой', kind: 'danger' },
+        { value: 'wait', label: 'В очереди', kind: 'warn' },
+        { value: 'ok', label: 'Готово', kind: 'ok' },
+      ], value: 'all',
+    });
+    // Стенд не ходит в сеть: поиск отвечает заранее заданными людьми и отделами.
+    // Каждое изменение выбора записываем — прогон проверяет, что о нём сообщают
+    // ВСЕГДА, включая очистку: на ней и ломалась кнопка «Дать доступ».
+    window.__pickerChanges = [];
+    window.__picker = window.__ctl.picker = ui.pickPeople('#c-picker', {
+      labelledBy: 'l-picker',
+      onChange: function (list) { window.__pickerChanges.push(list.length); },
+      value: [{ kind: 'dept', id: 5, name: 'Отдел продаж' },
+        { kind: 'user', id: 12, name: 'Иванов Пётр', photo: 'https://portal.invalid/avatar-ivanov.png' }],
+      search: function () {
+        return Promise.resolve({
+          depts: [{ id: 7, name: 'Бухгалтерия', path: 'Компания → Бухгалтерия' }],
+          users: [
+            { id: 21, name: 'Петрова Анна', post: 'менеджер', dept: 'Компания → Продажи',
+              photo: 'https://portal.invalid/avatar-petrova.png' },
+            { id: 22, name: 'Сидоров Иван', post: 'аналитик', dept: 'Компания → Аналитика', fired: true },
+          ],
+        });
+      },
+    });
+    // Пустое состояние обязано СКАЗАТЬ, ЧТО ДЕЛАТЬ: заголовок «Пока пусто» без
+    // продолжения человек читает как «сломалось».
+    ui.showState('#c-empty', 'empty', {
+      title: 'Пока никого нет',
+      text: 'Нажмите «Дать доступ» и выберите сотрудника или отдел — они появятся в этом списке.',
+    });
+    document.getElementById('b-modal').onclick = function () {
+      ui.confirmBox({ title: 'Убрать доступ?', text: 'Сотрудник сразу перестанет открывать приложение.', okText: 'Убрать', danger: true });
+    };
+    document.getElementById('b-toast').onclick = function () { ui.toast('Доступ выдан: 3', 'ok'); };
+
+    // Действие по кнопке: пока идёт работа, кнопка выключена и показывает кружок,
+    // повторное нажатие ничего не запускает. Отказ обязан вернуть кнопку в строй.
+    var actionRuns = 0;
+    window.__actionRuns = function () { return actionRuns; };
+    document.getElementById('b-action').onclick = function (e) {
+      ui.action(e.currentTarget, function () {
+        actionRuns++;
+        return new Promise(function (resolve) { setTimeout(resolve, 700); });
+      });
+    };
+    document.getElementById('b-action-fail').onclick = function (e) {
+      ui.action(e.currentTarget, function () {
+        return new Promise(function (_, reject) {
+          setTimeout(function () { reject(new Error('Портал ответил отказом')); }, 200);
+        });
+      });
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,749 @@
+/*
+ * Готовые куски интерфейса: кнопки, поля, таблица, вкладки, состояния, диалоги.
+ *
+ * Это не «красивости», а замена тому, что иначе пишется заново в каждом проекте
+ * и каждый раз по-своему. Здесь ровно тот минимум, который нужен приложению
+ * Битрикс24: список чего-нибудь, форма настроек, диалог подтверждения и внятные
+ * состояния «загружаем / пусто / ошибка».
+ */
+
+* { box-sizing: border-box; }
+
+/* Холст под документом тоже тёмный. Окно приложения не сжимается ниже
+   выделенного порталу контейнера, поэтому при коротком экране под содержимым
+   остаётся пустое место — и оно обязано быть цветом приложения, а не белым
+   листом браузера. */
+html { background: var(--bg); }
+
+body {
+  margin: 0;
+  /* Два приглушённых пятна света сверху дают глубину без единой картинки:
+     плоская заливка во весь экран выглядит дешевле ровно настолько, насколько
+     это заметно человеку, а не на скриншоте. */
+  background:
+    radial-gradient(1100px 600px at 85% -10%, #161c28 0, transparent 55%),
+    radial-gradient(900px 500px at -5% 0, #141a26 0, transparent 50%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font: 14px/1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* ВЫСОТА ДОКУМЕНТА = ВЫСОТА СОДЕРЖИМОГО, и ни пикселем больше.
+     Ни 100vh, ни height:100% здесь быть не должно: внутри портала vh — это
+     высота ОКНА ПРИЛОЖЕНИЯ, которое мы же и заказываем по высоте документа.
+     Замкнутый круг заканчивается тем, что окно остаётся раздутым после того,
+     как содержимое стало короче, и под приложением висит белая полоса —
+     ровно та «обрезка области приложения», которую видит человек. */
+  min-height: 0;
+}
+
+.wrap { max-width: var(--content-max); margin: 0 auto; padding: var(--gap-l) var(--gap); }
+
+h1 { font-size: 19px; font-weight: 600; margin: 0 0 var(--gap); }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 var(--gap-s); }
+a  { color: var(--accent); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   КАРКАС: боковое меню + рабочая область.
+   Взято из приложений, названных владельцем образцом («Распределение чатов»,
+   «Парсер курсов»): человек переходит между приложениями компании и не должен
+   каждый раз заново искать, где что. Меню фиксировано, прокручивается только
+   рабочая область — внутри iframe портала это единственный способ, чтобы
+   шапка не уезжала и страница помещалась в окно.
+   ══════════════════════════════════════════════════════════════════════════ */
+/* min-height не задаём — см. комментарий у body: высота документа должна
+   идти за содержимым, иначе окно в портале не сжимается обратно. */
+.layout { display: flex; align-items: stretch; }
+
+/* Меню В ПОТОКЕ, а не position:fixed. Внутри портала фиксация привязывает его
+   к окну приложения, которое само тянется за содержимым: меню повисает поверх
+   контента и уезжает при прокрутке страницы портала. Обычная колонка ведёт
+   себя предсказуемо в обоих случаях. */
+.sidebar {
+  width: var(--side-w); flex-shrink: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-side); border-right: 1px solid var(--border-soft);
+}
+.sidebar-logo { display: flex; align-items: center; gap: 11px; padding: 18px 18px 16px; }
+.logo-icon {
+  width: 30px; height: 30px; flex-shrink: 0; font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm); color: var(--accent);
+}
+.logo-text { font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+.logo-sub  { font-size: 11px; color: var(--text-mute); margin-top: 1px; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; }
+.nav-group { font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase;
+             color: var(--text-faint); padding: 14px 8px 6px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: none; background: none; width: 100%;
+  border-radius: var(--radius-sm); cursor: pointer;
+  color: var(--text-dim); font: 500 13px/1.2 var(--font); text-align: left;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.nav-item:hover { background: var(--surface-2); color: var(--text); }
+.nav-item.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nav-icon { width: 16px; text-align: center; flex-shrink: 0; opacity: .9; }
+.nav-count { margin-left: auto; font-size: 11px; color: var(--text-mute); }
+.sidebar-foot { margin-top: auto; padding: 12px 16px; font-size: 11px; color: var(--text-faint); }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  height: var(--topbar-h); flex-shrink: 0;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 var(--gap-l); border-bottom: 1px solid var(--border-soft);
+  background: var(--bg); z-index: var(--z-topbar);
+}
+.topbar h1 { margin: 0; font-size: 16px; font-weight: 650; }
+.topbar-sub { font-size: 12px; color: var(--text-mute); }
+.topbar-spacer { margin-left: auto; }
+.content { padding: var(--gap-l); flex: 1; min-width: 0; width: 100%; max-width: var(--content-max); }
+
+/* Узкое окно портала: меню уезжает наверх строкой, рабочая область занимает всё.
+   Без этого при ширине 900px приложение показывает горизонтальную полосу — та
+   самая «не влезает в окно», которую видно только у человека, а не на макете. */
+@media (max-width: 900px) {
+  .layout { display: block; }
+  .sidebar { width: auto; flex-direction: row; align-items: center;
+             overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border-soft); }
+  .sidebar-logo { padding: 12px 14px; }
+  .nav { flex-direction: row; padding: 6px; }
+  .nav-group, .sidebar-foot, .nav-count { display: none; }
+  .content, .topbar { padding-left: var(--gap); padding-right: var(--gap); }
+}
+
+/* Сетка карточек: одинаковая во всех приложениях, ломается сама по ширине.
+
+   min(...,100%) в минимуме колонки обязателен. Голый minmax(340px,1fr) — это
+   обещание «колонка не уже 340px», и браузер его держит даже тогда, когда всей
+   рабочей области 292px: колонка вылезает за край, а горизонтальной прокрутки
+   внутри портала у человека нет — кнопки и правый столбец просто недостижимы.
+   Ширину окна задаёт портал (слайдер сделки, узкий монитор, увеличенный
+   масштаб), и 320px — не выдумка (находка ревью 09.08.2026). */
+.grid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
+.grid-2 { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
+/* Блоки тянутся по своему содержимому: при stretch короткая карточка дорисовывает
+   пустую рамку под соседом — «пустое место», которое сразу замечает человек. */
+.grid, .grid-2 { align-items: start; }
+
+/* ── Карточка ─────────────────────────────────────────────────────────── */
+.card {
+  transition: border-color var(--motion-fast);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  margin-bottom: var(--gap);
+}
+.card:hover { border-color: var(--border-hover); }
+.card-title { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-mute); margin-bottom: var(--gap-s); }
+
+/* ── Кнопки ───────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  /* Высота — общая для всех контролов (--control-h), поэтому вертикальный
+     padding не задаём: он бы спорил с min-height и снова разъезжался. */
+  min-height: var(--control-h);
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 500 13px/1 var(--font);
+  cursor: pointer;
+  transition: background var(--motion-fast), border-color var(--motion-fast),
+              color var(--motion-fast), filter var(--motion-fast);
+}
+.btn:hover:not(:disabled) { background: var(--border); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+.btn-danger  { border-color: var(--danger); color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.btn-sm { min-height: var(--control-h-sm); padding: 0 10px; font-size: 12px; }
+/* Кружок ВНУТРИ кнопки на время работы (ui.action). Размер и цвет — от самой
+   кнопки: на «Удалить» он красный, на основной — цвета текста кнопки, и
+   отдельного правила под каждый вид не нужно. */
+.spinner-inline {
+  display: inline-block; width: 13px; height: 13px; flex: none;
+  border: 2px solid currentColor; border-top-color: transparent;
+  border-radius: 50%; opacity: .8;
+  animation: spin var(--motion-cycle-spin) linear infinite;
+}
+
+/* ── Поля ─────────────────────────────────────────────────────────────── */
+.field { display: block; margin-bottom: var(--gap); }
+.field > span { display: block; font-size: 12px; color: var(--text-mute); margin-bottom: 4px; }
+.input, .select {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 7px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: 14px/1.4 var(--font);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast),
+              background var(--motion-fast);
+}
+.input:focus, .select:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.input:focus-visible, .select:focus-visible {
+  outline: 2px solid var(--accent-2); outline-offset: 2px;
+}
+
+/* Нативный select красить бесполезно: список раскрывает СИСТЕМА, и внутри
+   тёмного портала он всплывает белым прямоугольником с чужими шрифтами. Он
+   оставлен только как запасной вариант разметки до инициализации скрипта. */
+.select { appearance: none; -webkit-appearance: none; padding-right: 30px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-mute) 50%),
+                    linear-gradient(135deg, var(--text-mute) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat; }
+.input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+.input[type=number]::-webkit-outer-spin-button,
+.input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Подсказка и ошибка поля. Ошибку показываем У СВОЕГО поля: в форме из восьми
+   настроек одна строка внизу не говорит, какое именно значение не приняли. */
+.field-hint { font-size: 12px; color: var(--text-mute); margin-top: 4px; }
+.field-err  { font-size: 12px; color: var(--danger); margin-top: 4px; width: 100%; }
+.field-err.hidden { display: none; }
+/* Поле с отказом видно и без чтения — рамка того же цвета, что и текст.
+   Красим ПО СОСТОЯНИЮ поля, а не по соседнему узлу: `aria-invalid` ставит тот
+   же код, что показывает причину, поэтому рамка и текст не расходятся. Раньше
+   рамка зависела от `.field-err:not(.hidden)` рядом — то есть от разметки, а
+   не от состояния, и на своих контролах (список, число, переключатель) не
+   появлялась вовсе. */
+.input[aria-invalid="true"],
+.ui-select-btn[aria-invalid="true"],
+.ui-date-btn[aria-invalid="true"] { border-color: var(--danger); }
+.ui-number:has(input[aria-invalid="true"]),
+.ui-search:has(input[aria-invalid="true"]) input,
+.picker-field:has(input[aria-invalid="true"]) { border-color: var(--danger); }
+/* Ввод и кнопка очистки — в одну строку; на узком окне кнопка уходит вниз.
+   Класс, а не `.field > div`: подсказка и ошибка — тоже прямые потомки поля,
+   и общий селектор превращал их в flex-контейнеры. */
+.field-slot { display: flex; gap: var(--gap-s); align-items: flex-start; flex-wrap: wrap; }
+.field-slot > .input { flex: 1 1 220px; max-width: 560px; }
+.field-slot > textarea.input { min-height: 84px; resize: vertical; }
+/* Число, выбор и переключатель не растягиваем на всю строку: поле в пол-экрана
+   ради двух цифр читается как ошибка вёрстки. */
+.field-slot > .ui-number { flex: 0 1 200px; }
+.field-slot > .ui-select { flex: 1 1 240px; max-width: 420px; }
+/* Переключатель и чипы лежат в своей обёртке: текст отказа некуда положить
+   внутрь <button>, а он обязан быть рядом с контролом и связан с ним. */
+.field-slot > .ui-switch-box, .field-slot > .chips-box { flex: 0 0 auto; }
+.ui-switch-box, .chips-box { max-width: 100%; }
+.btn.is-active { border-color: var(--accent); color: var(--accent-2); }
+.settings-foot { display: flex; gap: var(--gap); align-items: center; margin-top: var(--gap); }
+.settings-foot.hidden { display: none; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   СВОИ КОНТРОЛЫ — вместо системных.
+   Правило простое: в готовом приложении не должно остаться ни одного места,
+   где интерфейс рисует операционная система. Системный список, спиннер числа,
+   календарь и крестик поиска выглядят чужеродно в тёмной теме и ведут себя
+   по-разному в разных браузерах — человек видит «недоделано».
+   Разметку собирает controls.js: здесь только внешний вид. ui.js отвечает за
+   transport, состояния, toast и диалоги.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Раскрывающийся список ── */
+.ui-select { position: relative; display: inline-block; width: 100%; }
+.ui-select-btn {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  min-height: var(--control-h);
+  padding: 7px 11px; cursor: pointer; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); color: var(--text); font: 14px/1.4 var(--font);
+  transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+.ui-select-btn:hover { border-color: var(--border-strong); background: var(--surface-3); }
+.ui-select.is-open .ui-select-btn { border-color: var(--accent); }
+.ui-select-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select-value.is-placeholder { color: var(--text-faint); }
+/* Стрелка — своя, а не системная: поворачивается при раскрытии, и по ней сразу
+   видно состояние списка. */
+.ui-select-caret { flex-shrink: 0; width: 8px; height: 8px; margin-left: 2px;
+  border-right: 1.5px solid var(--text-mute); border-bottom: 1.5px solid var(--text-mute);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform var(--motion-base); }
+.ui-select.is-open .ui-select-caret { transform: rotate(-135deg) translate(-3px, -3px); }
+.ui-select-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: var(--z-drop);
+  max-height: 260px; overflow-y: auto; padding: 4px;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+  animation: popover-in var(--motion-fast) ease-out;
+}
+.ui-select-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 9px; border: none; background: none; cursor: pointer;
+  border-radius: 5px; color: var(--text-dim); font: 13px/1.35 var(--font); text-align: left;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.ui-select-opt:hover, .ui-select-opt.is-cursor { background: var(--surface-2); color: var(--text); }
+.ui-select-opt.is-selected { color: var(--accent); font-weight: 600; }
+.ui-select-opt.is-selected::after { content: '✓'; margin-left: auto; font-size: 12px; }
+.ui-select-empty { padding: 12px; text-align: center; color: var(--text-faint); font-size: 12px; }
+
+/* ── Число: минус и плюс своими кнопками ── */
+.ui-number { display: inline-flex; align-items: stretch; width: 100%;
+  min-height: var(--control-h);
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); overflow: hidden; }
+.ui-number:focus-within { border-color: var(--accent); }
+.ui-number input {
+  flex: 1; min-width: 0; padding: 8px 10px; border: none; background: none;
+  color: var(--text); font: 14px/1.4 var(--font); text-align: center;
+  appearance: textfield; -moz-appearance: textfield;
+}
+.ui-number input:focus { outline: none; }
+.ui-number input:focus-visible {
+  outline: 2px solid var(--accent-2); outline-offset: -3px; border-radius: 4px;
+}
+.ui-number input::-webkit-outer-spin-button,
+.ui-number input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ui-number button {
+  width: 34px; flex-shrink: 0; border: none; cursor: pointer;
+  background: var(--surface-3); color: var(--text-dim);
+  font: 600 15px/1 var(--font);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.ui-number button:hover:not(:disabled) { background: var(--border); color: var(--text); }
+.ui-number button:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ── Поиск: своя лупа и свой крестик (системный виден только в webkit) ── */
+.ui-search { position: relative; display: block; width: 100%; }
+.ui-search input {
+  width: 100%; min-height: var(--control-h); padding: 7px 32px;
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); color: var(--text); font: 14px/1.4 var(--font);
+  appearance: none; -webkit-appearance: none;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.ui-search input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.ui-search input:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.ui-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.ui-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  width: 12px; height: 12px; border: 1.5px solid var(--text-mute); border-radius: 50%; pointer-events: none;
+  transition: border-color var(--motion-fast); }
+.ui-search-icon::after { content: ''; position: absolute; right: -4px; bottom: -3px;
+  width: 6px; height: 1.5px; background: var(--text-mute); transform: rotate(45deg);
+  transition: background var(--motion-fast); }
+.ui-search:focus-within .ui-search-icon { border-color: var(--accent); }
+.ui-search:focus-within .ui-search-icon::after { background: var(--accent); }
+.ui-search-clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 20px; height: 20px; border: none; background: none; cursor: pointer;
+  color: var(--text-mute); font: 14px/1 var(--font); border-radius: 50%;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.ui-search-clear:hover { background: var(--surface-3); color: var(--text); }
+
+/* ── Дата: поле + свой календарь (у нативного он системный и светлый) ── */
+.ui-date { position: relative; display: inline-block; width: 100%; }
+.ui-date-btn { width: 100%; display: flex; align-items: center; gap: 8px;
+  min-height: var(--control-h);
+  padding: 7px 11px; cursor: pointer; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); color: var(--text); font: 14px/1.4 var(--font);
+  transition: border-color var(--motion-fast), background var(--motion-fast); }
+.ui-date.is-open .ui-date-btn { border-color: var(--accent); }
+.ui-date-btn .is-placeholder { color: var(--text-faint); }
+.ui-cal {
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: var(--z-drop); width: 252px; padding: 10px;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+  animation: popover-in var(--motion-fast) ease-out;
+}
+.ui-cal-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.ui-cal-title { flex: 1; text-align: center; font-size: 13px; font-weight: 600; }
+.ui-cal-nav { width: 26px; height: 26px; border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-dim); border-radius: 6px; cursor: pointer; font: 13px/1 var(--font);
+  transition: background var(--motion-fast), color var(--motion-fast); }
+.ui-cal-nav:hover { background: var(--border); color: var(--text); }
+.ui-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.ui-cal-dow { font-size: 10px; color: var(--text-faint); text-align: center; padding: 4px 0; text-transform: uppercase; }
+.ui-cal-day { padding: 6px 0; border: none; background: none; cursor: pointer; border-radius: 6px;
+  color: var(--text-dim); font: 12.5px/1 var(--font);
+  transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast); }
+.ui-cal-day:hover { background: var(--surface-2); color: var(--text); }
+.ui-cal-day.is-other { color: var(--text-faint); }
+.ui-cal-day.is-today { border: 1px solid var(--accent-line); color: var(--text); }
+.ui-cal-day.is-selected { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+/* ── Переключатель «включено/выключено» ── */
+/* Оправу системной кнопки снимаем ЯВНО. Без этого браузер рисует под своим
+   переключателем серую плашку buttonface с белой рамкой и своими отступами:
+   «свой контрол» оказывался вставлен в системную кнопку, а подпись на этой
+   плашке имела контраст 2.4:1 вместо 8:1. Замечено замером контраста
+   09.08.2026 — глазами на тёмной теме это принимаешь за оттенок фона. */
+.ui-switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 0; border: none; background: none; color: inherit; font: inherit; }
+.ui-switch-track {
+  width: 38px; height: 22px; flex-shrink: 0; border-radius: var(--radius-pill);
+  background: var(--surface-3); border: 1px solid var(--border-strong);
+  position: relative;
+  transition: background var(--motion-base), border-color var(--motion-base);
+}
+.ui-switch-dot {
+  position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--text-mute);
+  transition: transform var(--motion-base), background var(--motion-base);
+}
+.ui-switch.is-on .ui-switch-track { background: var(--accent-soft); border-color: var(--accent-line); }
+.ui-switch.is-on .ui-switch-dot { transform: translateX(16px); background: var(--accent); }
+.ui-switch-label { font-size: 13px; color: var(--text-dim); }
+
+/* ── Таблица ──────────────────────────────────────────────────────────── */
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th {
+  text-align: left; font-weight: 500; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .4px; color: var(--text-mute);
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+.table td { font-variant-numeric: tabular-nums; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table tr:last-child td { border-bottom: none; }
+/* Подсветка строки появляется плавно, как и всё остальное: мгновенная заливка
+   под курсором на длинной таблице читается как мигание, а не как отклик.
+   Переход на td, а не на tr: меняется фон именно ячейки. */
+.table tbody td { transition: background var(--motion-base); }
+.table tr:hover td { background: var(--surface-2); }
+/* Широкая таблица прокручивается сама, а не растягивает страницу под окном портала. */
+.table-wrap { overflow-x: auto; }
+
+/* ── Вкладки ──────────────────────────────────────────────────────────── */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: var(--gap); }
+.tab {
+  padding: 8px 14px; border: none; background: none; cursor: pointer;
+  color: var(--text-mute); font: 500 13px/1 var(--font);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color var(--motion-fast), border-color var(--motion-fast);
+}
+.tab:hover { color: var(--text); }
+.tab.is-active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* ── Чипы: выбор одного из нескольких и метки выбранного ──────────────── */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border); background: var(--surface-3);
+  color: var(--text-mute); font: 500 12.5px/1.2 var(--font); cursor: pointer;
+  transition: color var(--motion-fast), border-color var(--motion-fast),
+              background var(--motion-fast);
+}
+.chip:hover { color: var(--text-dim); border-color: var(--accent-line); }
+.chip.is-active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); font-weight: 600; }
+.chip-ok.is-active     { background: var(--ok-bg);     color: var(--ok);     border-color: rgba(74, 222, 128, .3); }
+.chip-warn.is-active   { background: var(--warn-bg);   color: var(--warn);   border-color: rgba(251, 191, 36, .3); }
+.chip-danger.is-active { background: var(--danger-bg); color: var(--danger); border-color: rgba(248, 113, 113, .3); }
+/* Чип-метка выбранного (человек, отдел, фильтр) — с крестиком, не кликается целиком. */
+.chip-tag { cursor: default; background: var(--surface-2); color: var(--text-dim); }
+.chip-tag .chip-x { border: none; background: none; cursor: pointer; padding: 0 0 0 2px;
+  color: var(--text-mute); font: 13px/1 var(--font); }
+.chip-tag .chip-x:hover { color: var(--danger); }
+.chip-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; margin-left: -4px; }
+.chip-dept::before { content: '▤'; opacity: .7; }
+
+/* ── Плашки ───────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 500; background: var(--surface-2); color: var(--text-dim);
+}
+.badge-ok     { background: var(--ok-bg);     color: var(--ok); }
+.badge-warn   { background: var(--warn-bg);   color: var(--warn); }
+.badge-danger { background: var(--danger-bg); color: var(--danger); }
+
+/* ── Плашка на месте контента: не всё же гнать в тост ─────────────────── */
+.alert {
+  padding: 12px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-dim); font-size: 13px; margin-bottom: var(--gap);
+}
+.alert b { display: block; color: var(--text); margin-bottom: 4px; }
+.alert p { margin: 0 0 8px; }
+.alert-ok     { background: var(--ok-bg);     border-color: var(--ok-line); }
+.alert-warn   { background: var(--warn-bg);   border-color: var(--warn-line); }
+.alert-error  { background: var(--danger-bg); border-color: var(--danger-line); }
+
+/* ── Пилюля «связь с порталом» в шапке ────────────────────────────────── */
+.conn { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px;
+  border-radius: var(--radius-pill); background: var(--surface-2);
+  border: 1px solid var(--border); font-size: 12px; color: var(--text-mute); }
+.conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+.conn.is-ok  .conn-dot { background: var(--ok);     box-shadow: 0 0 8px rgba(74, 222, 128, .6); }
+.conn.is-err .conn-dot { background: var(--danger); box-shadow: 0 0 8px rgba(248, 113, 113, .6); }
+
+/* ── Ход долгой работы ────────────────────────────────────────────────── */
+.progress { margin: var(--gap-s) 0; }
+.progress-track { height: 12px; border-radius: var(--radius-pill); background: var(--bg-2); overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: inherit;
+  transition: width var(--motion-slow); }
+/* ОЖИДАНИЕ БЕЗ ИЗВЕСТНОЙ ДОЛИ. Задача принята, но считать её пока некому
+   (планировщик молчит) — полоса на нуле выглядит как «ничего не происходит» и
+   человек жмёт «Запустить» ещё раз. Бегущая заливка честно говорит: ждём.
+   Тем, кто просил уменьшить анимацию, показываем спокойную ровную полосу. */
+.progress-fill.is-waiting {
+  width: 100% !important;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--accent) 25%, transparent) 25%,
+    var(--accent) 50%,
+    color-mix(in srgb, var(--accent) 25%, transparent) 75%);
+  background-size: 200% 100%;
+  animation: progress-wait var(--motion-cycle-wait) linear infinite;
+}
+@keyframes progress-wait { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill.is-waiting { animation: none; background: color-mix(in srgb, var(--accent) 45%, transparent); }
+}
+.progress-meta { display: flex; justify-content: space-between; gap: 10px;
+  font-size: 12px; color: var(--text-mute); margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+/* ── Шаги: установка, импорт, любой мастер ────────────────────────────── */
+.steps { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: var(--gap); }
+.step { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-mute); }
+.step-n { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;
+  background: var(--bg-2); border: 1px solid var(--border); color: var(--text-mute); }
+.step.is-active { color: var(--text); }
+.step.is-active .step-n { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.step.is-done .step-n { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
+.step-sep { flex: 1; min-width: 12px; height: 1px; background: var(--border); }
+
+/* ── Постраничная лента под длинным списком ───────────────────────────── */
+.pager { display: flex; align-items: center; gap: var(--gap-s); flex-wrap: wrap; margin-top: var(--gap); }
+.pager-info { font-size: 12px; color: var(--text-mute); font-variant-numeric: tabular-nums; }
+.pager-spacer { margin-left: auto; }
+
+/* ── Столбчатая полоска в строке таблицы ──────────────────────────────── */
+.bar-row { display: flex; align-items: center; gap: 10px; }
+.bar-track { flex: 1; min-width: 60px; height: 6px; border-radius: var(--radius-pill); background: var(--bg-2); }
+.bar-fill { height: 100%; border-radius: inherit; background: var(--accent); }
+.bar-val { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; }
+
+/* ── Список записей: журнал, очередь, история ─────────────────────────── */
+.rows { display: flex; flex-direction: column; gap: 8px; }
+.row-item {
+  display: flex; gap: 12px; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--border); border-radius: var(--radius-sm);
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+.row-item:hover { border-color: var(--border-strong); }
+.row-item.is-error { border-left-color: var(--danger); }
+.row-item.is-warn  { border-left-color: var(--warn); }
+.row-item.is-ok    { border-left-color: var(--ok); }
+.row-item.is-wait  { border-left-color: var(--accent); }
+.row-icon { flex-shrink: 0; width: 28px; height: 28px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center; font-size: 15px; background: var(--surface-3); }
+.row-body { flex: 1; min-width: 0; }
+/* 1.45 — нижняя граница читаемого межстрочного для переносящегося текста:
+   заголовок записи бывает в две-три строки, и при 1.4 они склеиваются. */
+.row-title { font-size: 14px; line-height: 1.45; word-break: break-word; }
+.row-meta  { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
+.row-note  { margin-top: 7px; padding: 7px 11px; font-size: 13px; line-height: 1.45;
+  background: var(--surface-2); border-left: 2px solid var(--accent-line);
+  border-radius: 5px; color: var(--text-dim); word-break: break-word; }
+
+/* ── Крупная цифра: то, ради чего человек открыл экран ────────────────── */
+/* Тот же приём, что у .grid: минимум колонки не должен быть шире самой сетки. */
+.kpis { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.kpi-label { font-size: 10px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-mute); }
+.kpi-value { font-variant-numeric: tabular-nums; font-size: 26px; font-weight: 650; letter-spacing: -.02em; margin-top: 6px; line-height: 1.1; }
+.kpi-value.is-ok { color: var(--ok); } .kpi-value.is-warn { color: var(--warn); } .kpi-value.is-bad { color: var(--danger); }
+.kpi-sub { font-size: 12px; color: var(--text-mute); margin-top: 4px; }
+
+/* ── Панель фильтров над списком ──────────────────────────────────────── */
+.toolbar { display: flex; align-items: flex-end; gap: var(--gap-s); flex-wrap: wrap; margin-bottom: var(--gap); }
+.toolbar .field { margin: 0; }
+.toolbar .ui-select, .toolbar .ui-date { width: auto; min-width: 170px; }
+.toolbar .ui-search { flex: 1; min-width: 180px; }
+
+/* ── Состояния экрана: загрузка, пусто, ошибка ────────────────────────── */
+.state { padding: 34px 20px; text-align: center; color: var(--text-mute); }
+.state b { display: block; color: var(--text); font-weight: 600; margin-bottom: 5px; }
+.state .btn { margin-top: var(--gap); }
+.spinner {
+  width: 18px; height: 18px; margin: 0 auto var(--gap-s);
+  border: 2px solid var(--border-strong); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin var(--motion-cycle-spin) linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ВЫБОР СОТРУДНИКОВ И ОТДЕЛОВ.
+   Права почти всегда выдают не по одному человеку: «отдел продаж плюс двое из
+   бухгалтерии». Поэтому один контрол ищет и людей, и отделы, добавляет сразу
+   несколько и показывает выбранное чипами, которые снимаются крестиком.
+   Поведение — в controls.js (ui.pickPeople).
+   ══════════════════════════════════════════════════════════════════════════ */
+.picker { position: relative; }
+.picker-field {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  min-height: var(--control-h); padding: 5px 8px; cursor: text;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.picker.is-open .picker-field { border-color: var(--accent); }
+.picker-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.picker-field input {
+  flex: 1; min-width: 120px; border: none; background: none; outline: none;
+  color: var(--text); font: 14px/1.4 var(--font); padding: 2px;
+}
+.picker-field input:focus-visible {
+  outline: 2px solid var(--accent-2); outline-offset: 2px;
+}
+.picker-field input::placeholder { color: var(--text-faint); }
+.picker-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: var(--z-drop);
+  max-height: 300px; overflow-y: auto; padding: 4px;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow);
+  animation: popover-in var(--motion-fast) ease-out;
+}
+.picker-group { font-size: 10px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-faint); padding: 9px 9px 5px; }
+.picker-opt {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 7px 9px; border: none; background: none; cursor: pointer;
+  border-radius: 5px; color: var(--text-dim); font: 13px/1.35 var(--font); text-align: left;
+  transition: background var(--motion-fast), color var(--motion-fast), opacity var(--motion-fast);
+}
+.picker-opt:hover, .picker-opt.is-cursor { background: var(--surface-2); color: var(--text); }
+.picker-opt.is-taken { opacity: .45; cursor: default; }
+.picker-avatar { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; object-fit: cover;
+  background: var(--surface-3); display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 650; color: var(--text-mute); }
+.picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-sub { font-size: 11px; color: var(--text-faint); }
+.picker-note {
+  margin: 4px 5px 6px; padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--warn) 36%, var(--border-soft));
+  border-radius: 5px; background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: var(--text-mute); font-size: 12px; line-height: 1.45;
+}
+/* Уволенного показываем, но помечаем: иначе человек ищет его в списке и не находит,
+   а потом выясняется, что доступ висел на уволенном. */
+.picker-opt.is-fired .picker-name { text-decoration: line-through; opacity: .75; }
+.picker-hint { padding: 10px; text-align: center; color: var(--text-faint); font-size: 12px; }
+
+/* Дерево отделов: вложенность видна отступом, свои стрелки раскрытия. */
+.tree { font-size: 13px; }
+.tree-node { display: flex; align-items: center; gap: 7px; padding: 5px 6px; border-radius: 5px;
+  cursor: pointer; color: var(--text-dim);
+  transition: background var(--motion-fast), color var(--motion-fast); }
+.tree-node:hover { background: var(--surface-2); color: var(--text); }
+.tree-node.is-picked { color: var(--accent); font-weight: 600; }
+.tree-toggle { width: 14px; flex-shrink: 0; border: none; background: none; cursor: pointer;
+  color: var(--text-mute); font: 10px/1 var(--font);
+  transition: transform var(--motion-base); }
+.tree-toggle.is-open { transform: rotate(90deg); }
+.tree-kids { margin-left: 16px; border-left: 1px solid var(--border-soft); padding-left: 6px; }
+
+/* ── Тост: сообщить, ничего не спрашивая ──────────────────────────────── */
+#toasts {
+  position: fixed; right: 16px; top: 16px; z-index: var(--z-toast);
+  display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 32px));
+}
+.toast {
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-pop);
+  padding: 11px 14px; font-size: 13px; color: var(--text);
+  animation: toast-in var(--motion-slow) ease-out;
+}
+.toast.is-leaving { animation: toast-out var(--motion-fast) ease-in forwards; }
+.toast-ok     { border-left-color: var(--ok); }
+.toast-error  { border-left-color: var(--danger); }
+.toast-warn   { border-left-color: var(--warn); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(-6px); } }
+
+/* ── Модалка: спросить. Браузерный confirm в iframe вешает весь портал ─── */
+.modal-back {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  background: var(--overlay); backdrop-filter: blur(3px);
+  display: flex; align-items: flex-start; justify-content: center; padding: 20px;
+  animation: modal-back-in var(--motion-fast) ease-out;
+}
+.modal {
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  width: 100%; max-width: 430px; padding: 20px;
+  /* Диалог не должен вылезать за окно портала — иначе кнопки недостижимы. */
+  max-height: calc(100vh - 40px); overflow-y: auto;
+  animation: modal-in var(--motion-slow) ease-out;
+}
+.modal-back.is-leaving { animation: modal-back-out var(--motion-fast) ease-in forwards; }
+.modal-back.is-leaving .modal { animation: modal-out var(--motion-fast) ease-in forwards; }
+@keyframes modal-back-in { from { opacity: 0; } }
+@keyframes modal-back-out { to { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.985); } }
+@keyframes modal-out { to { opacity: 0; transform: translateY(6px) scale(.985); } }
+@keyframes popover-in { from { opacity: 0; transform: translateY(-4px); } }
+.modal h2 { margin-bottom: 6px; font-size: 16px; }
+.modal p  { margin: 0 0 var(--gap); color: var(--text-dim); }
+.modal-actions { display: flex; justify-content: flex-end; gap: var(--gap-s); }
+.modal-wide  { max-width: 620px; }
+.modal-xwide { max-width: 1040px; }
+.modal-close { position: absolute; top: 12px; right: 12px; width: 26px; height: 26px;
+  border: none; background: none; color: var(--text-mute); font: 16px/1 var(--font);
+  border-radius: 6px; cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast); }
+.modal-close:hover { background: var(--surface-2); color: var(--text); }
+.modal { position: relative; }
+/* Пока открыт диалог, фон под ним прокручиваться не должен: иначе человек
+   листает список за диалогом и теряет из виду то, что у него спросили. */
+body.modal-open { overflow: hidden; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ОБЩЕЕ: доступность и мелкие утилиты, на которые опирается код приложений.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Ходить по интерфейсу с клавиатуры должно быть видно. Обводка только для
+   :focus-visible — при клике мышью она не появляется и не мозолит глаза. */
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+
+/* Человеку, которому анимация мешает (укачивание, эпилепсия), система об этом
+   сообщает — и мы обязаны её послушать. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Спрятанное обязано быть спрятанным — обоими способами.
+   Браузерное правило [hidden]{display:none} слабее любого правила компонента:
+   .btn{display:inline-flex} перебивает его молча, и кнопка, которую код честно
+   пометил hidden, продолжает висеть на экране (круг 2 ревью 06.08.2026 — кнопка
+   «Пересобрать» на пустых плейсментах и пилюля связи с порталом). Класс .hidden
+   был обходным путём для этого; теперь работают оба, и выбор способа больше не
+   решает, увидит человек лишний элемент или нет. */
+[hidden] { display: none !important; }
+.hidden  { display: none !important; }
+.muted  { color: var(--text-mute); }
+.small  { font-size: 12px; }
+.nowrap { white-space: nowrap; }
+.trunc  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.num    { font-variant-numeric: tabular-nums; }
+.row-gap { display: flex; gap: var(--gap-s); flex-wrap: wrap; align-items: center; }
+.mt { margin-top: var(--gap); }
+
+/* Родные флажки и переключатели оставляем: они привычны и доступны с
+   клавиатуры без единой строки кода — красим системным свойством. */
+input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 15px; height: 15px; }
+.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text-dim); }
+.check:hover { color: var(--text); }

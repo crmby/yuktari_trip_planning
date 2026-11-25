@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+www/env.php
+env/
+data/
+var/
+node_modules/
+__pycache__/
+*.log
+.DS_Store

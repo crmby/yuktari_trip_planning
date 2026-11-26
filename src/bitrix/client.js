@@ -1,6 +1,23 @@
 import { AppError } from './errors.js';
 
 const BASE = 'https://vibecode.bitrix24.tech/v1';
+function requestLabel(path) {
+  const pathname = path.split('?')[0];
+  const labels = {
+    '/me':'проверка ключа и сессии', '/users/me':'проверка профиля сотрудника',
+    '/deals/fields':'загрузка полей сделок', '/contacts/fields':'загрузка полей контактов',
+    '/userfields/contacts':'загрузка настроек пользовательских полей контакта',
+    '/deal-categories':'загрузка воронок сделок', '/deals':'поиск и календарь сделок',
+    '/users':'загрузка сотрудников', '/placements/bind':'привязка вкладки сделки',
+  };
+  if (labels[pathname]) return labels[pathname];
+  if (/^\/lists\/\d+\/elements$/.test(pathname)) return 'загрузка справочника маршрутов';
+  if (/^\/deals\/\d+\/products$/.test(pathname)) return 'загрузка услуг сделки';
+  if (/^\/deals\/\d+$/.test(pathname)) return 'доступ к карточке сделки';
+  if (/^\/contacts\/\d+$/.test(pathname)) return 'доступ к карточке контакта';
+  if (/^\/users\/\d+$/.test(pathname)) return 'доступ к карточке сотрудника';
+  return 'доступ к данным';
+}
 function accessMessage(status, code) {
   if (['MISSING_API_KEY','INVALID_API_KEY','KEY_INACTIVE','KEY_EXPIRED','KEY_NOT_FOUND'].includes(code)) return 'VibeCode не принимает ключ приложения. Проверьте VIBE_APP_KEY в переменных работающего сервера: нужен действующий ключ этого OAuth-приложения. Изменение локального .env вступит в силу после доставки настроек на сервер.';
   if (code === 'SESSION_APP_MISMATCH') return 'Сессия выдана другому OAuth-приложению. VIBE_APP_KEY на сервере должен принадлежать тому приложению, через которое открыт этот интерфейс.';
@@ -27,10 +44,13 @@ export function createVibeClient({ appKey, fetchImpl = fetch }) {
     let result;
     try { result = await response.json(); } catch { throw new AppError(502, 'VIBE_INVALID_RESPONSE', 'VibeCode вернул неожиданный ответ.'); }
     if (!response.ok || result.success !== true) {
-      const status = [401, 403, 404, 409, 429].includes(response.status) ? response.status : 502;
+      const status = [400, 401, 403, 404, 409, 422, 429].includes(response.status) ? response.status : 502;
       const code = /^[A-Z0-9_]{1,80}$/.test(result.error?.code || '') ? result.error.code : 'VIBE_REQUEST_FAILED';
-      const step = path === '/me' ? 'проверка ключа и сессии' : path === '/users/me' ? 'проверка профиля сотрудника' : 'доступ к данным';
-      throw new AppError(status, code, `${accessMessage(status, code)} Код: ${code}; ${step}.`);
+      const step = requestLabel(path);
+      const b24Code = /^[A-Z0-9_]{1,80}$/.test(result.error?.b24Code || '') ? result.error.b24Code : '';
+      const causes = {b24_permission:'Портал сообщил о недостатке прав сотрудника.',b24_scope:'Портал сообщил о недостатке OAuth-разрешений приложения.',key_scope_missing:'У ключа приложения отсутствует разрешение на этот запрос.'};
+      const cause = Object.hasOwn(causes,result.error?.cause) ? causes[result.error.cause] : '';
+      throw new AppError(status, code, `${accessMessage(status, code)} Код: ${code}${b24Code ? `; код Битрикс24: ${b24Code}` : ''}; ${step}.${cause ? ` ${cause}` : ''}`);
     }
     if (method !== 'GET' && result.meta?.warnings?.some(w => w.code === 'UNRECOGNIZED_WRITE_FIELD')) throw new AppError(502, 'CRM_WRITE_UNCERTAIN', 'Часть полей CRM могла не сохраниться. Требуется проверка результата.');
     return result;

@@ -50,6 +50,20 @@ test('ошибки ключа, несовпадения приложения и 
     });
   }
 });
+test('отказ начальной загрузки сообщает этап и код Битрикс24 без текста CRM и параметров',async()=>{
+  const call=createVibeClient({appKey:'vibe_app_test',fetchImpl:async()=>new Response(JSON.stringify({success:false,error:{code:'BITRIX_ERROR',b24Code:'ACCESS_DENIED_EXTEND',cause:'b24_permission',message:'private client address',details:{token:'private token'}}}),{status:422})});
+  for (const [path,label] of [['/deals/fields','загрузка полей сделок'],['/contacts/fields','загрузка полей контактов'],['/userfields/contacts','загрузка настроек пользовательских полей контакта'],['/deal-categories','загрузка воронок сделок'],['/lists/123/elements?filter=private-search','загрузка справочника маршрутов']]) {
+    await assert.rejects(call(path,{authorization:context.authorization}),error=>{
+      assert.equal(error.status,422);assert.equal(error.code,'BITRIX_ERROR');assert.equal(error.message.includes(label),true);
+      assert.match(error.message,/ACCESS_DENIED_EXTEND/);assert.match(error.message,/прав сотрудника/);
+      assert.equal(error.message.includes('private'),false);assert.equal(error.message.includes('123'),false);return true;
+    });
+  }
+});
+test('произвольные подробности в коде причины Битрикс24 не отображаются',async()=>{
+  const call=createVibeClient({appKey:'vibe_app_test',fetchImpl:async()=>new Response(JSON.stringify({success:false,error:{code:'BITRIX_ERROR',b24Code:'vibe_session_private',cause:'private explanation',message:'private description'}}),{status:422})});
+  await assert.rejects(call('/contacts/fields',{authorization:context.authorization}),error=>!error.message.includes('private')&&error.message.includes('загрузка полей контактов'));
+});
 test('сохранение обновляет только согласованные поля контакта и сделки и проверяет чтением',async t=>{
   const f=await setup(t),request=await input(f),result=await f.service.save(request,context);
   assert.equal(result.booking.syncState,'synced');assert.equal(result.booking.masterId,'m1');

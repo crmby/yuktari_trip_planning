@@ -1,6 +1,16 @@
 import { AppError } from './errors.js';
 
 const BASE = 'https://vibecode.bitrix24.tech/v1';
+function accessMessage(status, code) {
+  if (['MISSING_API_KEY','INVALID_API_KEY','KEY_INACTIVE','KEY_EXPIRED','KEY_NOT_FOUND'].includes(code)) return 'VibeCode не принимает ключ приложения. Проверьте VIBE_APP_KEY в переменных работающего сервера: нужен действующий ключ этого OAuth-приложения. Изменение локального .env вступит в силу после доставки настроек на сервер.';
+  if (code === 'SESSION_APP_MISMATCH') return 'Сессия выдана другому OAuth-приложению. VIBE_APP_KEY на сервере должен принадлежать тому приложению, через которое открыт этот интерфейс.';
+  if (code === 'WRONG_AUTH_SCHEME') return 'VibeCode отклонил схему авторизации. Ключ приложения передаётся в X-Api-Key, сессия сотрудника — в Authorization.';
+  if (code === 'NO_PORTAL') return 'OAuth-приложение не связано с порталом. Проверьте его подключение к Юктари в VibeCode.';
+  if (code === 'PORTAL_CREDENTIALS_REJECTED') return 'Портал отклонил доступ приложения. Проверьте подключение OAuth-приложения в VibeCode.';
+  if (status === 401) return 'Нужно заново войти или выдать приложению доступ. Закройте приложение и откройте его заново из меню Битрикс24; простое обновление старой вкладки сессию не восстановит. При первом входе авторизуйте приложение.';
+  if (status === 403) return 'У сотрудника или приложения нет доступа к этим данным Битрикс24.';
+  return 'Битрикс24 не выполнил запрос.';
+}
 export function createVibeClient({ appKey, fetchImpl = fetch }) {
   return async function call(path, { authorization, method = 'GET', body, signal } = {}) {
     if (!/^vibe_app_[A-Za-z0-9_-]+$/.test(appKey || '')) throw new AppError(503, 'APP_NOT_CONFIGURED', 'Добавьте VIBE_APP_KEY OAuth-приложения в настройки сервера.');
@@ -19,7 +29,8 @@ export function createVibeClient({ appKey, fetchImpl = fetch }) {
     if (!response.ok || result.success !== true) {
       const status = [401, 403, 404, 409, 429].includes(response.status) ? response.status : 502;
       const code = /^[A-Z0-9_]{1,80}$/.test(result.error?.code || '') ? result.error.code : 'VIBE_REQUEST_FAILED';
-      throw new AppError(status, code, status === 401 ? 'Сессия Битрикс24 истекла. Переоткройте приложение из портала.' : status === 403 ? 'У сотрудника или приложения нет доступа к этим данным Битрикс24.' : `Битрикс24 не выполнил запрос (${code}).`);
+      const step = path === '/me' ? 'проверка ключа и сессии' : path === '/users/me' ? 'проверка профиля сотрудника' : 'доступ к данным';
+      throw new AppError(status, code, `${accessMessage(status, code)} Код: ${code}; ${step}.`);
     }
     if (method !== 'GET' && result.meta?.warnings?.some(w => w.code === 'UNRECOGNIZED_WRITE_FIELD')) throw new AppError(502, 'CRM_WRITE_UNCERTAIN', 'Часть полей CRM могла не сохраниться. Требуется проверка результата.');
     return result;

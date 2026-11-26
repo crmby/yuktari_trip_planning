@@ -40,6 +40,15 @@ test('канонические UF-поля, все услуги и ID инфоб
   assert.equal(deal.products.length,2);assert.equal(deal.products[0].quantity,2);
   assert.equal(deal.years,'3');assert.equal(deal.comment,'Отдельный комментарий');
 });
+test('ошибки ключа, несовпадения приложения и сессии различаются без утечки ответа API',async()=>{
+  for (const [status,code,expected] of [[401,'INVALID_API_KEY',/не принимает ключ/],[401,'KEY_EXPIRED',/не принимает ключ/],[403,'SESSION_APP_MISMATCH',/другому OAuth-приложению/],[401,'INVALID_SESSION',/заново войти или выдать/],[401,'TOKEN_MISSING',/При первом входе/]]) {
+    const call=createVibeClient({appKey:'vibe_app_test',fetchImpl:async()=>new Response(JSON.stringify({success:false,error:{code,message:'private remote response',details:{secret:'private'}}}),{status})});
+    await assert.rejects(call('/me',{authorization:context.authorization}),error=>{
+      assert.equal(error.code,code);assert.match(error.message,expected);assert.match(error.message,/проверка ключа и сессии/);
+      assert.equal(error.message.includes('private'),false);assert.equal(error.message.includes('vibe_session_'),false);return true;
+    });
+  }
+});
 test('сохранение обновляет только согласованные поля контакта и сделки и проверяет чтением',async t=>{
   const f=await setup(t),request=await input(f),result=await f.service.save(request,context);
   assert.equal(result.booking.syncState,'synced');assert.equal(result.booking.masterId,'m1');

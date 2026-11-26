@@ -532,3 +532,9 @@ if (runtimeInfo.error) {
   notify(runtimeInfo.error, true);
 }
 setInterval(() => { if (live && currentView === 'sheet' && !calendarLoading && !document.querySelector('dialog[open]') && !document.activeElement?.matches('input,select,textarea')) loadLiveCalendar(); }, 60000);
+// Active forms also need Gateway requests; calendar refresh only covers the sheet.
+let lastActivity = Date.now();
+for (const event of ['pointerdown','keydown','input']) document.addEventListener(event, () => { lastActivity = Date.now(); }, {passive:true});
+setInterval(() => {
+  if (live && !runtimeInfo.error && document.visibilityState === 'visible' && Date.now() - lastActivity < 5 * 60000) api('/runtime').catch(() => {});
+}, 4 * 60000);

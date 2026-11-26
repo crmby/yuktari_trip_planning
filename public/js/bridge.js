@@ -7,7 +7,11 @@ export async function api(path, body) {
   } catch { throw Object.assign(new Error('Нет ответа сервера приложения. Если выполнялось сохранение, сначала проверьте его результат.'), { code: 'APP_UNAVAILABLE' }); }
   let payload;
   try { payload = await response.json(); } catch { throw Object.assign(new Error('Сервер вернул неожиданный ответ. Проверьте результат сохранения.'), {code:'APP_UNAVAILABLE'}); }
-  if (!response.ok || payload.success === false) throw Object.assign(new Error(payload.error?.message || 'Не удалось загрузить данные Битрикс24.'), { code: payload.error?.code, status: response.status });
+  if (!response.ok || payload.success === false) {
+    const code = payload.error?.code || (typeof payload.error === 'string' && /^[A-Z0-9_]{1,80}$/.test(payload.error) ? payload.error : '');
+    const fallback = response.status === 401 ? 'Нужно заново войти или выдать приложению доступ. Закройте приложение и откройте заново из меню Битрикс24.' : 'Не удалось загрузить данные Битрикс24.';
+    throw Object.assign(new Error(payload.error?.message || fallback + (code ? ` Код: ${code}.` : '')), { code, status: response.status });
+  }
   return payload.data ?? payload;
 }
 

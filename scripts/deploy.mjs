@@ -32,14 +32,17 @@ function tar(args) {
 }
 
 async function api(path, key, options = {}) {
+  const operation = `${options.method || 'GET'} /v1${path}`;
   let response;
   try { response = await fetch(`${baseUrl}${path}`, {
     ...options, headers: { 'X-Api-Key': key }, redirect: 'error', signal: AbortSignal.timeout(options.method === 'POST' ? 900_000 : 15_000),
-  }); } catch { throw new Error(options.method === 'POST' ? 'VibeCode: ответ доставки не получен. Проверьте журнал сервера перед повтором.' : 'VibeCode: HTTPS-соединение не установлено. Деплой не начат.'); }
-  if (!response.ok) throw new Error(`VibeCode: HTTP ${response.status}. Подробности доступны в кабинете VibeCode.`);
+  }); } catch { throw new Error(options.method === 'POST' ? `VibeCode: ${operation}: ответ доставки не получен. Проверьте журнал сервера перед повтором.` : `VibeCode: ${operation}: HTTPS-соединение не установлено. Деплой не начат.`); }
   let body;
-  try { body = await response.json(); } catch { throw new Error('VibeCode вернул ответ в неожиданном формате.'); }
-  if (body.success !== true) throw new Error('VibeCode сообщил об ошибке. Проверьте журнал деплоя в кабинете.');
+  try { body = await response.json(); } catch { throw new Error(`VibeCode: ${operation}: HTTP ${response.status}, неожиданный формат ответа.`); }
+  if (!response.ok || body.success !== true) {
+    const code = /^[A-Z0-9_]{1,80}$/.test(body.error?.code || '') ? body.error.code : 'UNKNOWN';
+    throw new Error(`VibeCode: ${operation}: HTTP ${response.status}, код ${code}.`);
+  }
   return body.data;
 }
 

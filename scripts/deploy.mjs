@@ -4,10 +4,9 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { loadLocalEnv, projectRoot } from '../src/config.js';
-import { needsCatalogChoice, catalogSummary } from './deploy-options.mjs';
+import { needsCatalogChoice, catalogSummary, deploymentArguments, selectDeploymentKey } from './deploy-options.mjs';
 import { createInterface } from 'node:readline/promises';
 
-const dryRun = process.argv.includes('--dry-run');
 const entries = ['src', 'public', 'package.json', 'package-lock.json'];
 const baseUrl = 'https://vibecode.bitrix24.tech/v1';
 let temporary;
@@ -47,7 +46,7 @@ async function api(path, key, options = {}) {
 }
 
 try {
-  if (process.argv.slice(2).some(arg => arg !== '--dry-run')) throw new Error('Допустимый параметр: --dry-run.');
+  const { dryRun, keySource } = deploymentArguments(process.argv.slice(2));
   // Packaging can be checked without opening .env or accessing the network.
   for (const entry of entries) await review(join(projectRoot, entry));
   temporary = await mkdtemp(join(tmpdir(), 'yuktari-deploy-'));
@@ -62,8 +61,10 @@ try {
     console.log(`Архив проверен: ${contents.length} записей. Файл deploy-preview.tar.gz. Сетевые запросы не выполнялись.`);
   } else {
     loadLocalEnv();
-    const { SERVER_ID: serverId, VIBE_API_KEY: key, B24_DOMAIN: portal } = process.env;
-    if (!serverId || !key || !portal) throw new Error('Заполните SERVER_ID, VIBE_API_KEY и B24_DOMAIN в локальном .env.');
+    const { SERVER_ID: serverId, B24_DOMAIN: portal } = process.env;
+    const { key, variable } = selectDeploymentKey(process.env,keySource);
+    if (!serverId || !portal) throw new Error('Заполните SERVER_ID и B24_DOMAIN в локальном .env.');
+    console.log(`Источник ключа доставки: ${variable}.`);
     if (!/^[a-z0-9.-]+$/i.test(portal)) throw new Error('B24_DOMAIN должен содержать домен без протокола и пути.');
     const me = await api('/me', key);
     if (typeof me.portal !== 'string' || me.portal.toLowerCase() !== portal.toLowerCase()) throw new Error('VibeCode: ключ доставки не подтвердил целевой портал.');

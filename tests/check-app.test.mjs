@@ -24,6 +24,12 @@ test('другой портал и адрес не считаются подтв
   const foreign=fixture({me:{portal:'foreign.bitrix24.by'}});assert.equal((await inspectApp(env,foreign.fetch)).verdict,'MISMATCH');assert.equal(foreign.calls.length,1);
   const other=fixture({app:{appUrl:'https://other.invalid'}});assert.equal((await inspectApp(env,other.fetch)).verdict,'MISMATCH');
 });
+test('явно выбранный ключ приложения используется для проверки сервера',async()=>{
+  const f=fixture(),report=await inspectApp(env,f.fetch,{keySource:'app'});
+  assert.equal(report.verdict,'MATCH');assert.equal(report.infraKeyVariable,'VIBE_APP_KEY');
+  assert.equal(f.calls.at(-1).options.headers['X-Api-Key'],env.VIBE_APP_KEY);
+  assert.equal(f.calls.every(c=>c.options.method==='GET'),true);
+});
 test('без доступа к карточке результат остаётся неполным',async()=>{
   const f=fixture(),report=await inspectApp({...env,VIBE_API_KEY:''},f.fetch);
   assert.equal(report.verdict,'INCOMPLETE');assert.equal(f.calls.length,1);

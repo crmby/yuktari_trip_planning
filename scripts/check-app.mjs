@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadLocalEnv } from '../src/config.js';
+import { deploymentArguments, selectDeploymentKey } from './deploy-options.mjs';
 
 const base = 'https://vibecode.bitrix24.tech/v1';
 const safeCode = value => /^[A-Z0-9_]{1,80}$/.test(value || '') ? value : 'UNKNOWN';
@@ -12,7 +13,7 @@ function address(value) {
 }
 
 // No session or CRM records are requested. Only allowlisted comparisons leave this function.
-export async function inspectApp(env, fetchImpl = fetch) {
+export async function inspectApp(env, fetchImpl = fetch, {keySource = 'api'} = {}) {
   const key = env.VIBE_APP_KEY, portal = String(env.B24_DOMAIN || '').toLowerCase();
   const expectedUrl = address(env.APP_URL), serverId = safeId(env.SERVER_ID);
   if (!/^vibe_app_[A-Za-z0-9_-]+$/.test(key || '')) throw failure('VIBE_APP_KEY отсутствует или имеет неверный формат. Значение не выводится.');
@@ -39,7 +40,9 @@ export async function inspectApp(env, fetchImpl = fetch) {
   catch (error) { report.detailCheckError = error.safe ? error.message : 'Не удалось проверить карточку приложения.'; return report; }
   if (safeId(app?.id) !== appId) throw failure('Ответ карточки OAuth-приложения не соответствует проверяемому ID.');
   report.appUrlMatches = address(app?.appUrl) === expectedUrl;
-  try { server = await get(`/infra/servers/${encodeURIComponent(serverId)}`,env.VIBE_API_KEY); }
+  const selected = selectDeploymentKey(env,keySource);
+  report.infraKeyVariable = selected.variable;
+  try { server = await get(`/infra/servers/${encodeURIComponent(serverId)}`,selected.key); }
   catch (error) { report.detailCheckError = error.safe ? error.message : 'Не удалось проверить сервер.'; return report; }
   if (safeId(server?.id) !== serverId) throw failure('Ответ сервера не соответствует настроенному SERVER_ID.');
   report.serverUrlMatches = address(server?.appUrl) === expectedUrl;
@@ -52,6 +55,7 @@ export function describeReport(report) {
   return [
     `OAuth-ключ принят: ${yes(report.oauthKeyAccepted)}.`, `Портал совпадает: ${yes(report.portalMatches)}.`,
     `ID OAuth-приложения: ${report.oauthAppId || 'не получен'}.`,
+    `Источник ключа проверки сервера: ${report.infraKeyVariable || 'не выбран'}.`,
     `Адрес OAuth-приложения совпадает с APP_URL: ${yes(report.appUrlMatches)}.`,
     `Адрес настроенного сервера совпадает с APP_URL: ${yes(report.serverUrlMatches)}.`,
     `Недостающие доступы: ${report.missingScopes.join(', ') || 'нет'}.`,
@@ -61,6 +65,6 @@ export function describeReport(report) {
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  try { loadLocalEnv(); const report = await inspectApp(process.env); console.log(describeReport(report).join('\n')); if (report.verdict !== 'MATCH') process.exitCode = 1; }
-  catch (error) { console.error(error.safe ? error.message : 'Проверка не завершена. Проверьте локальную конфигурацию; значения не выводятся.'); process.exitCode=1; }
+  try { const options = deploymentArguments(process.argv.slice(2)); if(options.dryRun) throw failure('Для app:check используйте только --key-source=api или --key-source=app.'); loadLocalEnv(); const report = await inspectApp(process.env,fetch,options); console.log(describeReport(report).join('\n')); if (report.verdict !== 'MATCH') process.exitCode = 1; }
+  catch (error) { console.error(error.safe || /^(Заполните|Допустим)/.test(error.message) ? error.message : 'Проверка не завершена. Проверьте локальную конфигурацию; значения не выводятся.'); process.exitCode=1; }
 }

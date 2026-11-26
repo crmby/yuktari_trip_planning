@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { needsCatalogChoice, catalogSummary } from '../scripts/deploy-options.mjs';
+import { needsCatalogChoice, catalogSummary, deploymentArguments, selectDeploymentKey } from '../scripts/deploy-options.mjs';
+test('управляющий ключ выбирается явно, отказ не переключает источник',()=>{
+  const env={VIBE_API_KEY:'personal-test',VIBE_APP_KEY:'vibe_app_test'};
+  assert.equal(selectDeploymentKey(env).key,env.VIBE_API_KEY);
+  assert.equal(selectDeploymentKey(env,deploymentArguments(['--key-source=app']).keySource).key,env.VIBE_APP_KEY);
+  assert.throws(()=>selectDeploymentKey({VIBE_API_KEY:'personal-test'},'app'));
+  assert.throws(()=>deploymentArguments(['--key-source=api','--key-source=app']));
+  assert.throws(()=>deploymentArguments(['--key-source=unknown']));
+});
 test('вопрос о каталоге нужен только без выбора и без существующей карточки',()=>{
   assert.equal(needsCatalogChoice({showInBitrix24:'NOT_CHOSEN',b24CatalogSync:{itemId:null}}),true);
   for (const showInBitrix24 of ['YES','NO']) assert.equal(needsCatalogChoice({showInBitrix24,b24CatalogSync:{itemId:null}}),false);

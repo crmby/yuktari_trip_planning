@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { createBitrixApi } from './bitrix/api.js';
+import { version } from './build.js';
 
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -15,6 +16,7 @@ export function createApp(config = {}, dependencies = {}) {
   const bitrixApi = mode === 'bitrix' ? createBitrixApi(config, dependencies) : null;
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-App-Version', version);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' https://vibecode.bitrix24.tech" + (portal ? ` https://${portal}` : ''));
@@ -22,7 +24,7 @@ export function createApp(config = {}, dependencies = {}) {
     try { url = new URL(req.url, 'http://localhost'); path = url.pathname; } catch { res.writeHead(400); return res.end(); }
     if (path.startsWith('/api/') && bitrixApi) return bitrixApi(req, res, url);
     if (path === '/api/runtime' && req.method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify({ mode: 'demo' }));
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify({ mode: 'demo', version }));
     }
     if (!['GET', 'HEAD'].includes(req.method)) {
       res.writeHead(405, { Allow: 'GET, HEAD' });
@@ -30,7 +32,7 @@ export function createApp(config = {}, dependencies = {}) {
     }
     if (path === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      return res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ status: 'ok', app: 'yuktari-trip-planning' }));
+      return res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ status: 'ok', app: 'yuktari-trip-planning', version }));
     }
     // Demo mode never exposes portal data APIs.
     if (path.startsWith('/api/')) {

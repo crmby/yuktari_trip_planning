@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createApp } from '../src/app.js';
 import { readConfig } from '../src/config.js';
+import { version } from '../src/build.js';
 
 test('порт и домен проверяются до запуска', () => {
   assert.throws(() => readConfig({ PORT: '0' }));
@@ -21,12 +22,15 @@ test('сервис отдаёт только каркас и health; конфи�
   assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'self' https:\/\/vibecode.bitrix24.tech https:\/\/example.bitrix24.by/);
   assert.equal(page.headers.has('x-frame-options'), false);
   assert.equal(page.headers.get('cache-control'), 'no-store');
+  assert.equal(page.headers.get('x-app-version'), version);
   for (const path of ['/.env', '/.git/config', '/templates/b24-advanced-php/www/template.html', '/src/config.js', '/data/state.json', '/%2e%2e/.env']) {
     assert.equal((await fetch(base + path)).status, 404, path);
   }
   assert.equal((await fetch(base + '/api/trips')).status, 503);
   assert.equal((await fetch(base, { method: 'POST' })).status, 405);
   assert.equal((await fetch(base, { method: 'HEAD' })).status, 200);
-  assert.equal((await fetch(base + '/health')).status, 200);
+  const health = await fetch(base + '/health');
+  assert.equal(health.status, 200); assert.equal((await health.json()).version, version);
+  assert.equal((await (await fetch(base + '/api/runtime')).json()).version,version);
   for (const path of ['/css/b24-tokens.css', '/css/app.css', '/js/app.js', '/js/planner.js']) assert.equal((await fetch(base + path)).status, 200);
 });

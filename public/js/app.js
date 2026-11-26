@@ -503,7 +503,7 @@ if (live) {
   $('#reload-deal').hidden = false;
   $('#view-booking .section-heading .muted').textContent = contextId ? 'Текущая сделка подставлена из вкладки Битрикс24.' : 'Найдите сделку в Битрикс24 и согласуйте время обслуживания.';
   $('.booking-aside .field-help').textContent = 'После сохранения приложение проверит значения в контакте и сделке. Услуги берутся из товарных позиций.';
-  $('.app-footer span').textContent = 'Версия 0.3 · Битрикс24';
+  $('.app-footer span').textContent = `Версия ${runtimeInfo.version || 'не определена'} · Битрикс24`;
   const now = new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Minsk'}).format(new Date());
   $('#sheet-date').value = now; $('#exception-date').value = now; month = now.slice(0,7);
   $('#add-master').disabled = !runtimeInfo.canManage; $('#add-group').disabled = !runtimeInfo.canManage;

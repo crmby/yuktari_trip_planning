@@ -19,6 +19,6 @@ export async function runtime() {
   try {
     const info = await api('/runtime');
     if (info.mode === 'demo') return info;
-    try { return await api('/bootstrap'); } catch (error) { return { mode: 'bitrix', error: error.message, canManage: false }; }
+    try { return { ...await api('/bootstrap'), version:info.version }; } catch (error) { return { mode: 'bitrix', version:info.version, error: error.message, canManage: false }; }
   } catch (error) { return { mode: 'bitrix', error: error.message, canManage: false }; }
 }

@@ -9,6 +9,7 @@ import { createAuthenticator, createVibeClient } from '../src/bitrix/client.js';
 import { createStore } from '../src/bitrix/store.js';
 import { createPlanningService } from '../src/bitrix/service.js';
 import { createApp } from '../src/app.js';
+import { version } from '../src/build.js';
 import { fixture, context } from './fixtures/crm.mjs';
 
 async function setup(t) {
@@ -108,6 +109,8 @@ test('API защищает запись от другого сайта, не о�
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
   const base=`http://127.0.0.1:${server.address().port}`,headers={'x-vibe-authorization':context.authorization};
+  const runtime=await fetch(base+'/api/runtime');
+  assert.equal(runtime.status,200);assert.equal((await runtime.json()).version,version);
   const bootstrap=await fetch(base+'/api/bootstrap',{headers});assert.equal(bootstrap.status,200);
   assert.equal((await bootstrap.text()).includes('vibe_session_'),false);
   assert.equal((await fetch(base+'/api/settings',{method:'POST',headers:{...headers,'Content-Type':'application/json',Origin:'https://other.invalid'},body:'{}'})).status,403);

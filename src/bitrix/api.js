@@ -3,6 +3,7 @@ import { createCrm } from './crm.js';
 import { createStore } from './store.js';
 import { createPlanningService } from './service.js';
 import { AppError } from './errors.js';
+import { version } from '../build.js';
 
 export function createBitrixApi(config, dependencies = {}) {
   const call = dependencies.call || createVibeClient({ appKey: config.appKey, fetchImpl: dependencies.fetchImpl });
@@ -20,7 +21,7 @@ export function createBitrixApi(config, dependencies = {}) {
   }
   return async function handle(req, res, url) {
     try {
-      if (req.method === 'GET' && url.pathname === '/api/runtime') return send(res, 200, { mode: 'bitrix' });
+      if (req.method === 'GET' && url.pathname === '/api/runtime') return send(res, 200, { mode: 'bitrix', version });
       const context = { ...await authenticate(req), portal: config.portal };
       if (req.method === 'POST') {
         const origin = config.appUrl ? new URL(config.appUrl).origin : '';

@@ -27,15 +27,18 @@ export function fixture() {
     if (entity==='deals' && related==='products') return {data:[{productName:'Услуга 1',price:35,quantity:2},{productName:'Услуга 2',price:15,quantity:1}]};
     if (!id && entity==='deals') {
       const params=url.searchParams,filter=params.has('filter')?JSON.parse(params.get('filter')):{};
+      if([...params.keys()].some(key=>key.startsWith('filter[')))throw new Error('Use one JSON filter with explicit field names');
+      const allowedFields=new Set(['id','title','categoryId','stageSemanticId',...Object.values(dealKeys)]);
+      for(const key of Object.keys(filter))if(!allowedFields.has(key))throw new Error('UNKNOWN_FILTER_FIELD: '+key);
       let items=[...deals.values()].filter(d=>{
         if(filter.categoryId?.$in && !filter.categoryId.$in.includes(Number(d.categoryId)))return false;
-        const allowed=params.getAll('filter[categoryId][$in][0]').length ? Array.from({length:4},(_,i)=>params.get('filter[categoryId][$in]['+i+']')) : null;
-        if(allowed && !allowed.includes(String(d.categoryId)))return false;
-        if(filter.closed===false && d.closed===true)return false;
+        if(filter.stageSemanticId && filter.stageSemanticId!==d.stageSemanticId)return false;
         if(filter.title?.$contains && !d.title.toLowerCase().includes(filter.title.$contains.toLowerCase()))return false;
         if(typeof filter.id==='number' && Number(d.id)!==filter.id)return false;
         if(filter.id?.$gt && Number(d.id)<=filter.id.$gt)return false;
-        return !params.has('filter['+dealKeys.date+']') || d[dealKeys.date]===params.get('filter['+dealKeys.date+']');
+        const day=filter[dealKeys.date];
+        if(day && typeof day==='object')return new Date(d[dealKeys.date])>=new Date(day.$gte) && new Date(d[dealKeys.date])<=new Date(day.$lte);
+        return !day || d[dealKeys.date]===day;
       }).sort((a,b)=>Number(a.id)-Number(b.id));
       const limit=Number(params.get('limit') || 50),hasMore=items.length>limit;items=items.slice(0,limit);
       return {data:structuredClone(items),meta:{hasMore,...(hasMore?{nextAfterId:items.at(-1).id}:{})}};

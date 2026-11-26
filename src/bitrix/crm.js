@@ -127,15 +127,15 @@ export function createCrm(call, { routeIblockId = '', referenceStore } = {}) {
     const q=String(query || '').trim().slice(0,120),result=[];let after='';
     for(let page=0;page<100;page++) {
       const filter={categoryId:{$in:PLANNING_FUNNEL_IDS.map(Number)}};
-      if(!q)filter.closed=false;
+      if(!q)filter.stageSemanticId='P';
       else if(/^[1-9]\d{0,14}$/.test(q))filter.id=Number(q);
       else filter.title={$contains:q};
       if(after)filter.id={$gt:Number(after)};
-      const params=new URLSearchParams({filter:JSON.stringify(filter),limit:q?'50':'10',select:'id,title,categoryId,closed','order[id]':'asc',withTotal:'false'});
-      const response=await api('/deals?'+params,context);
+      const params=new URLSearchParams({filter:JSON.stringify(filter),limit:q?'50':'10',select:'id,title,categoryId,stageSemanticId','order[id]':'asc',withTotal:'false'});
+      const response=await api('/deals?'+params,context,{operationLabel:'search'});
       if(response.meta?.pageErrorSample || response.meta?.warnings?.some(w=>/TRUNCATED|PARTIAL/.test(w.code)))throw new AppError(502,'SEARCH_PARTIAL','Поиск вернул неполные данные. Повторите запрос.');
       const items=asArray(response.data);
-      result.push(...items.filter(d=>PLANNING_FUNNEL_IDS.includes(String(d.categoryId)) && (q || d.closed!==true)).map(d=>({id:requireId(d.id),title:scalar(d.title),funnel:String(d.categoryId)})));
+      result.push(...items.filter(d=>PLANNING_FUNNEL_IDS.includes(String(d.categoryId)) && (q || d.stageSemanticId==='P')).map(d=>({id:requireId(d.id),title:scalar(d.title),funnel:String(d.categoryId)})));
       if(!q || !response.meta?.hasMore || /^[1-9]\d{0,14}$/.test(q))return result;
       const next=scalar(response.meta.nextAfterId || items.at(-1)?.id);
       if(!/^[1-9]\d*$/.test(next) || Number(next)<=Number(after))throw new AppError(502,'SEARCH_CURSOR_FAILED','Не удалось продолжить поиск сделок.');
@@ -150,11 +150,11 @@ export function createCrm(call, { routeIblockId = '', referenceStore } = {}) {
     const after = cursor?.split(':')[1] || '';
     const key = meta.deal.date.key, dateTime = meta.deal.date.type === 'datetime';
     const query = new URLSearchParams({ limit: '20', 'order[id]': 'asc', select:['id','title','categoryId','contactId','companyId','currency','stageSemanticId',...Object.values(meta.deal).map(f=>f.key)].join(','), withTotal:'false' });
-    PLANNING_FUNNEL_IDS.forEach((id,i)=>query.set('filter[categoryId][$in]['+i+']',id));
-    if (dateTime) { query.set(`filter[>=${key}]`, `${date}T00:00:00+03:00`); query.set(`filter[<=${key}]`, `${date}T23:59:59+03:00`); }
-    else query.set(`filter[${key}]`, date);
-    if (after) query.set('filter[>id]', requireId(after));
-    const page = await api('/deals?' + query, context);
+    const filter={categoryId:{$in:PLANNING_FUNNEL_IDS.map(Number)}};
+    filter[key]=dateTime ? {$gte:`${date}T00:00:00+03:00`,$lte:`${date}T23:59:59+03:00`} : date;
+    if(after)filter.id={$gt:Number(requireId(after))};
+    query.set('filter',JSON.stringify(filter));
+    const page = await api('/deals?' + query, context,{operationLabel:'calendar'});
     if (page.meta?.pageErrorSample || page.meta?.warnings?.some(w => /TRUNCATED|PARTIAL/.test(w.code))) throw new AppError(502, 'CALENDAR_PARTIAL', 'Битрикс24 вернул неполную страницу выездов. Повторите загрузку.');
     const contactsCache=new Map();let unavailable=0;
     for (let offset = 0; offset < asArray(page.data).length; offset += 4) {

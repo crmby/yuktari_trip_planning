@@ -29,8 +29,20 @@ function accessMessage(status, code) {
   if (status === 403) return 'У сотрудника или приложения нет доступа к этим данным Битрикс24.';
   return 'Битрикс24 не выполнил запрос.';
 }
+function filterDiagnostic(path, remote) {
+  let fields=[];
+  try {
+    const query=new URL(path,BASE).searchParams;
+    if(query.has('filter'))fields=Object.keys(JSON.parse(query.get('filter')));
+    else for(const key of query.keys()){const match=key.match(/^filter\[([^\]]+)\]/);if(match)fields.push(match[1].replace(/^[><=!%]+/,''));}
+  }catch{}
+  fields=[...new Set(fields)].filter(key=>/^[A-Za-z_][A-Za-z0-9_]{0,79}$/.test(key));
+  const candidate=typeof remote.field==='string' ? remote.field : String(remote.message || '').match(/unknown\s+(?:filter\s+)?field\s*[:=]?\s*['"`]?([A-Za-z_][A-Za-z0-9_]*)/i)?.[1];
+  const rejected=fields.find(field=>field===candidate);
+  return rejected ? ` Отклонённое поле фильтра: ${rejected}.` : fields.length ? ` Поля фильтра: ${fields.join(', ')}.` : '';
+}
 export function createVibeClient({ appKey, fetchImpl = fetch }) {
-  return async function call(path, { authorization, method = 'GET', body, signal, timeoutMs = 10_000 } = {}) {
+  return async function call(path, { authorization, method = 'GET', body, signal, timeoutMs = 10_000, operationLabel } = {}) {
     if (!/^vibe_app_[A-Za-z0-9_-]+$/.test(appKey || '')) throw new AppError(503, 'APP_NOT_CONFIGURED', 'Добавьте VIBE_APP_KEY OAuth-приложения в настройки сервера.');
     if (!/^Bearer vibe_session_[A-Za-z0-9_-]+$/.test(authorization || '')) throw new AppError(401, 'AUTH_REQUIRED', 'Откройте приложение из Битрикс24 и разрешите доступ OAuth-приложению.');
     if (!path.startsWith('/') || path.startsWith('//')) throw new AppError(500, 'INVALID_API_PATH', 'Ошибка адреса API.');
@@ -50,11 +62,12 @@ export function createVibeClient({ appKey, fetchImpl = fetch }) {
     if (!response.ok || result.success !== true) {
       const status = [400, 401, 403, 404, 409, 422, 429].includes(response.status) ? response.status : 502;
       const code = /^[A-Z0-9_]{1,80}$/.test(result.error?.code || '') ? result.error.code : 'VIBE_REQUEST_FAILED';
-      const step = requestLabel(path);
+      const step = operationLabel==='search' ? 'поиск сделок' : operationLabel==='calendar' ? 'календарь выездов' : requestLabel(path);
       const b24Code = /^[A-Z0-9_]{1,80}$/.test(result.error?.b24Code || '') ? result.error.b24Code : '';
       const causes = {b24_permission:'Портал сообщил о недостатке прав сотрудника.',b24_scope:'Портал сообщил о недостатке OAuth-разрешений приложения.',key_scope_missing:'У ключа приложения отсутствует разрешение на этот запрос.'};
       const cause = Object.hasOwn(causes,result.error?.cause) ? causes[result.error.cause] : '';
-      throw new AppError(status, code, `${accessMessage(status, code)} Код: ${code}${b24Code ? `; код Битрикс24: ${b24Code}` : ''}; ${step}.${cause ? ` ${cause}` : ''}`);
+      const diagnostic=code==='UNKNOWN_FILTER_FIELD' ? filterDiagnostic(path,result.error || {}) : '';
+      throw new AppError(status, code, `${accessMessage(status, code)} Код: ${code}${b24Code ? `; код Битрикс24: ${b24Code}` : ''}; ${step}.${diagnostic}${cause ? ` ${cause}` : ''}`);
     }
     if (method !== 'GET' && result.meta?.warnings?.some(w => w.code === 'UNRECOGNIZED_WRITE_FIELD')) throw new AppError(502, 'CRM_WRITE_UNCERTAIN', 'Часть полей CRM могла не сохраниться. Требуется проверка результата.');
     return result;

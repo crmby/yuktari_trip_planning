@@ -431,6 +431,7 @@ async function loadLiveCalendar(more = false) {
       for (const deal of result.deals) state.deals = state.deals.filter(d => d.id !== deal.id).concat(deal);
       for (const booking of result.bookings) state.bookings = state.bookings.filter(b => b.dealId !== booking.dealId).concat(booking);
       state.revision = result.revision;
+      if(result.warning)notify('Показаны сохранённые выезды приложения. Дополнительный список CRM не загружен. '+result.warning,true);
       cursor = result.next; calendarCursor = cursor;
       renderSheet();
       if (!cursor) break;

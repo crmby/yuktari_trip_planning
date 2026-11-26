@@ -57,6 +57,35 @@ test('календарь читает свежие поля из списка б
   assert.deepEqual(page.deals.map(d=>d.id),['101']);assert.equal(page.unavailable,1);
   assert.equal(requests.filter(path=>/^\/deals\/\d+$/.test(path)).length,0);
 });
+test('календарь передаёт единый JSON-фильтр с точным UF-ключом и датой, без скобочных псевдополей',async()=>{
+  const f=fixture(),key=f.dealKeys.date,requests=[];
+  f.deals.get('101')[key]='2026-11-25T23:30:00+03:00';f.deals.get('102')[key]='2026-11-26T09:00:00+03:00';
+  const crm=createCrm(async(path,options)=>{
+    if(path.startsWith('/deals?')){
+      const params=new URL(path,'https://test.invalid').searchParams;
+      assert.equal([...params.keys()].some(k=>k.startsWith('filter[')),false);
+      const filter=JSON.parse(params.get('filter'));assert.deepEqual(Object.keys(filter).sort(),['categoryId',key].sort());
+      assert.deepEqual(filter.categoryId.$in,[6,0,8,10]);assert.equal(filter[key].$gte,'2026-11-25T00:00:00+03:00');
+      assert.equal(options.operationLabel,'calendar');requests.push(path);
+    }
+    const result=await f.call(path,options);if(path==='/deals/fields')result.data.fields[key].type='datetime';return result;
+  });
+  assert.deepEqual((await crm.calendar('2026-11-25',null,context)).deals.map(d=>d.id),['101']);assert.equal(requests.length,1);
+});
+test('отказ фильтра CRM не скрывает сохранённый выезд; поля и права перечитываются по ID',async t=>{
+  const f=await setup(t);await f.service.save(await input(f),context);const writes=f.writes.length;
+  f.deals.get('101')[f.dealKeys.comment]='Актуальный комментарий';
+  f.crm.calendar=async()=>{throw new AppError(400,'UNKNOWN_FILTER_FIELD','Отклонён фильтр календаря');};
+  const page=await f.service.calendar('2026-11-25',null,context);
+  assert.equal(page.partial,true);assert.equal(page.bookings[0].dealId,'101');assert.equal(page.bookings[0].comment,'Актуальный комментарий');assert.ok(page.warning);
+  f.crm.getDeal=async()=>{throw new AppError(403,'ACCESS_DENIED','Нет доступа');};
+  assert.deepEqual((await f.service.calendar('2026-11-25',null,context)).bookings,[]);assert.equal(f.writes.length,writes);
+});
+test('ошибка фильтра различает поиск и календарь и раскрывает только переданное имя поля',async()=>{
+  const call=createVibeClient({appKey:'vibe_app_test',fetchImpl:async()=>new Response(JSON.stringify({success:false,error:{code:'UNKNOWN_FILTER_FIELD',message:'Unknown filter field "ufCrm1612779971491". private value vibe_session_secret',field:'ufCrm1612779971491'}}),{status:400})});
+  const path='/deals?'+new URLSearchParams({filter:JSON.stringify({categoryId:{$in:[0]},ufCrm1612779971491:'private-date'})});
+  for(const [operationLabel,label] of [['search','поиск сделок'],['calendar','календарь выездов']])await assert.rejects(call(path,{authorization:context.authorization,operationLabel}),e=>e.message.includes(label)&&e.message.includes('Отклонённое поле фильтра: ufCrm1612779971491')&&!e.message.includes('private')&&!e.message.includes('vibe_session_'));
+});
 test('частично сохранённый выезд виден из календаря; чужая незавершённая сделка не блокирует выбранную',async t=>{
   const f=await setup(t),request=await input(f);f.setFailure(true);
   await assert.rejects(f.service.save(request,context),{code:'CRM_SYNC_UNCERTAIN'});
@@ -125,7 +154,7 @@ test('справочники сохраняются между запускам�
 });
 test('поиск без текста даёт 10 активных, по названию читает все страницы четырёх воронок',async()=>{
   const f=fixture(),template=f.deals.get('101');f.deals.clear();
-  for(let i=1;i<=75;i++)f.deals.set(String(100+i),{...template,id:String(100+i),categoryId:[6,0,8,10,99][i%5],title:'Поиск '+i,closed:i%3===0});
+  for(let i=1;i<=75;i++)f.deals.set(String(100+i),{...template,id:String(100+i),categoryId:[6,0,8,10,99][i%5],title:'Поиск '+i,closed:i%3===0,stageSemanticId:i%3===0?'S':'P'});
   const initial=await f.crm.searchDeals('',context);assert.equal(initial.length,10);
   assert.ok(initial.every(d=>['6','0','8','10'].includes(d.funnel) && f.deals.get(d.id).closed===false));
   const found=await f.crm.searchDeals('Поиск',context);assert.equal(found.length,60);assert.equal(new Set(found.map(d=>d.id)).size,60);

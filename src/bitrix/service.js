@@ -59,10 +59,15 @@ export function createPlanningService({ crm, store, managerIds = [], appUrl }) {
   }
   async function calendar(date, cursor, context) {
     if (!validDate(date) || (cursor && !/^\d{1,2}:[1-9]?\d{0,14}$/.test(cursor))) throw new AppError(400, 'INVALID_CALENDAR_QUERY', 'Некорректная дата или страница календаря.');
-    const page = await crm.calendar(date, cursor, context), saved = await store.read();
+    const saved = await store.read();let page;
+    try{page=await crm.calendar(date,cursor,context);}
+    catch(error){
+      if(error.code!=='UNKNOWN_FILTER_FIELD')throw error;
+      page={deals:[],next:null,partial:true,warning:error.message};
+    }
     // A durable reservation must also be visible when its UF date was not yet
     // confirmed by CRM. Recheck access before exposing any stored trip.
-    if(!cursor)for(const booking of saved.bookings.filter(b=>b.date===date && b.syncState==='pending' && !page.deals.some(d=>d.id===b.dealId))){
+    if(!cursor || page.partial)for(const booking of saved.bookings.filter(b=>b.date===date && (page.partial || b.syncState==='pending') && !page.deals.some(d=>d.id===b.dealId))){
       try{const current=await crm.getDeal(booking.dealId,context);if(PLANNING_FUNNEL_IDS.includes(current.funnel) && (current.date===date || booking.syncState==='pending'))page.deals.push(current);}
       catch(error){if(![403,404].includes(error.status))throw error;}
     }

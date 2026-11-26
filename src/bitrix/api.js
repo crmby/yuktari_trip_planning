@@ -5,11 +5,12 @@ import { createPlanningService } from './service.js';
 import { AppError } from './errors.js';
 import { version } from '../build.js';
 import { createReadJobs } from './read-jobs.js';
+import { join } from 'node:path';
 
 export function createBitrixApi(config, dependencies = {}) {
   const call = dependencies.call || createVibeClient({ appKey: config.appKey, fetchImpl: dependencies.fetchImpl });
   const authenticate = dependencies.authenticate || createAuthenticator(call, config.portal);
-  const crm = dependencies.crm || createCrm(call, config);
+  const crm = dependencies.crm || createCrm(call, {...config,referenceStore:dependencies.referenceStore || createStore(join(config.dataDir,'references'))});
   const store = dependencies.store || createStore(config.dataDir);
   const service = createPlanningService({ crm, store, managerIds: config.managerIds, appUrl: config.appUrl });
   const jobs = createReadJobs();
@@ -33,7 +34,7 @@ export function createBitrixApi(config, dependencies = {}) {
         if (!origin || req.headers.origin !== origin || req.headers['x-requested-with'] !== 'yuktari-planner') throw new AppError(403, 'CSRF_REJECTED', 'Запрос должен быть отправлен из интерфейса приложения.');
       }
       let result;
-      if (req.method === 'GET' && url.pathname === '/api/bootstrap') result = await service.bootstrap(context);
+      if (req.method === 'GET' && url.pathname === '/api/bootstrap') result = await service.bootstrap(context,{refresh:url.searchParams.get('refresh')==='1'});
       else if (req.method === 'GET' && url.pathname === '/api/deals') result = await crm.searchDeals(url.searchParams.get('q'), context);
       else if (req.method === 'GET' && /^\/api\/deals\/[1-9]\d*$/.test(url.pathname)) result = await service.deal(url.pathname.split('/').at(-1), context);
       else if (req.method === 'GET' && url.pathname === '/api/calendar') result = await service.calendar(url.searchParams.get('date'), url.searchParams.get('cursor'), context);

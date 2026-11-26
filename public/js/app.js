@@ -61,7 +61,7 @@ function options(select, items, empty) {
 }
 const funnelOptions = () => live ? state.funnelOptions || [] : FUNNELS.map((name,i) => ({id:String(i),name}));
 const funnelLabel = deal => live ? deal.funnelName || funnelOptions().find(f => f.id === String(deal.funnel))?.name || '' : FUNNELS[deal.funnel];
-function renderSelectors() {
+function renderSelectors(selectedDealId = contextId || field('dealId').value) {
   const routes = routeOptions().map(route => ({ value: route.id, label: route.label }));
   options($('#route-filter'), routes, 'Все направления');
   options($('#booking-route'), routes);
@@ -70,7 +70,7 @@ function renderSelectors() {
   const masters = state.masters.map(m => ({ value: m.id, label: m.name + (m.active ? '' : ' · неактивен') }));
   options($('#master-filter'), masters, 'Все мастера');
   options($('#schedule-master'), masters);
-  const choices = [...new Map([...state.deals, ...dealResults].map(d => [d.id, d])).values()];
+  const choices = [...new Map((live ? [...dealResults,...state.deals.filter(d=>d.id===selectedDealId)] : state.deals).map(d => [d.id, d])).values()];
   options($('#booking-deal'), choices.map(d => ({ value: d.id, label: `№${d.id} · ${d.title || d.client}` })), live ? 'Найдите и выберите сделку' : undefined);
 }
 function showView(name) {
@@ -194,6 +194,7 @@ function openMaster(id = null) {
   editingMaster = id;
   const master = state.masters.find(m => m.id === id);
   const masterForm = $('#master-form'); masterForm.reset();
+  $('#employee-search').value = '';
   masterForm.elements.namedItem('wialon').value = master?.wialon || '';
   $('#master-employee').disabled = Boolean(master);
   $('#employee-search').hidden = Boolean(master);
@@ -393,7 +394,7 @@ async function loadLiveDeal(id) {
   try {
     if (contextId && id !== contextId) { notify('Вкладка открыта из другой сделки. Для поиска используйте отдельное приложение.', true); return; }
     const result = await api(`/deals/${encodeURIComponent(id)}`);
-    mergeDeal(result); renderSelectors();
+    mergeDeal(result); renderSelectors(id);
     const deal = result.deal, booking = result.booking;
     editingBooking = booking?.status !== 'cancelled' ? booking?.id || null : null;
     fillBooking({ ...deal, dealId: deal.id, date: deal.date || $('#sheet-date').value,
@@ -459,27 +460,66 @@ function renderEmployees(selected = '') {
   options($('#master-employee'), employeeResults.filter(p => !existing.includes(p.id)).map(p => ({value:p.id,label:p.name})), 'Выберите сотрудника');
   if (selected) $('#master-employee').value = selected;
 }
+let employeeDirectory = null, employeeRequest = null, employeeGeneration = 0;
 async function loadEmployees(query) {
+  const generation=++employeeGeneration;
+  $('#master-error').hidden=true;
+  if(!employeeDirectory) { options($('#master-employee'),[],'Загрузка сотрудников…');$('#master-employee').disabled=true; }
   try {
-    employeeResults = live ? await api('/employees?' + new URLSearchParams({q:query})) : [
-      ...createDemoState().masters.map((m,i) => ({id:String(501+i),name:m.name})),
-      {id:'601',name:'Тестовый мастер Алексей'}, {id:'602',name:'Тестовый мастер Ольга'},
-    ].filter(p => !query || p.name.toLowerCase().includes(query.toLowerCase()));
-    renderEmployees();
-  } catch (error) { $('#master-error').textContent = error.message; $('#master-error').hidden = false; }
+    if(!employeeDirectory) {
+      employeeRequest ||= live ? api('/employees?q=') : Promise.resolve([
+        ...createDemoState().masters.map((m,i)=>({id:String(501+i),name:m.name})),{id:'601',name:'Тестовый мастер Алексей'},{id:'602',name:'Тестовый мастер Ольга'}
+      ]);
+      try{employeeDirectory=await employeeRequest;}finally{employeeRequest=null;}
+    }
+    if(generation!==employeeGeneration || editingMaster)return;
+    const words=query.toLocaleLowerCase('ru').trim().split(/\s+/).filter(Boolean);
+    employeeResults=employeeDirectory.filter(p=>words.every(word=>p.name.toLocaleLowerCase('ru').includes(word)));
+    $('#master-employee').disabled=false;renderEmployees();
+    if(!$('#master-employee').options.length || $('#master-employee').options.length===1) { $('#master-error').textContent='Подходящие сотрудники не найдены или уже добавлены.';$('#master-error').hidden=false; }
+  } catch(error) {
+    if(generation!==employeeGeneration)return;
+    options($('#master-employee'),[],'Список сотрудников недоступен');$('#master-employee').disabled=true;
+    $('#master-error').textContent=error.message;$('#master-error').hidden=false;
+  }
 }
 let employeeTimer, dealTimer, dealSearchGeneration = 0;
-$('#employee-search').addEventListener('input', event => { clearTimeout(employeeTimer); employeeTimer = setTimeout(() => loadEmployees(event.target.value), 350); });
-$('#deal-search').addEventListener('input', event => {
-  clearTimeout(dealTimer); const query = event.target.value.trim(), generation = ++dealSearchGeneration;
-  dealTimer = setTimeout(async () => {
-    try {
-      const results = live ? (query.length >= 2 || /^\d+$/.test(query) ? await api('/deals?' + new URLSearchParams({q:query})) : []) : state.deals.filter(d => `${d.id} ${d.client}`.toLowerCase().includes(query.toLowerCase()));
-      if (generation !== dealSearchGeneration) return;
-      dealResults = results;
-      options($('#booking-deal'), results.map(d => ({value:d.id,label:`№${d.id} · ${d.title || d.client}`})), results.length ? 'Выберите найденную сделку' : 'Сделки не найдены');
-    } catch (error) { notify(error.message, true); }
-  }, 350);
+$('#employee-search').addEventListener('input',event=>{clearTimeout(employeeTimer);employeeTimer=setTimeout(()=>loadEmployees(event.target.value),250);});
+let dealLookup = Promise.resolve();
+function loadDealChoices(query) {
+  const generation=++dealSearchGeneration;
+  dealLookup=dealLookup.then(async()=>{
+  if(generation!==dealSearchGeneration)return;
+  const selected=field('dealId').value;
+  options($('#booking-deal'),[],'Поиск сделок…');
+  try {
+    const results=live ? await api('/deals?'+new URLSearchParams({q:query})) : state.deals.filter(d=>!query || (d.id+' '+d.client).toLowerCase().includes(query.toLowerCase()));
+    if(generation!==dealSearchGeneration)return;
+    dealResults=results;
+    const chosen=state.deals.find(d=>d.id===selected);
+    const choices=chosen && !results.some(d=>d.id===selected) ? [chosen,...results] : results;
+    options($('#booking-deal'),choices.map(d=>({value:d.id,label:'№'+d.id+' · '+(d.title || d.client)})),results.length?'Выберите сделку':'Сделки не найдены');
+    if(chosen)field('dealId').value=selected;
+  } catch(error) { if(generation===dealSearchGeneration){options($('#booking-deal'),[],'Не удалось загрузить сделки');notify(error.message,true);} }
+  });
+  return dealLookup;
+}
+$('#deal-search').addEventListener('input',event=>{
+  clearTimeout(dealTimer);++dealSearchGeneration;
+  const query=event.target.value.trim();dealTimer=setTimeout(()=>loadDealChoices(query),350);
+});
+$('#refresh-references').addEventListener('click',async()=>{
+  if(document.querySelector('dialog[open]')){notify('Закройте окно редактирования перед обновлением справочников.',true);return;}
+  const button=$('#refresh-references');button.disabled=true;button.textContent='Загрузка…';
+  try {
+    const fresh=await api('/bootstrap?refresh=1');
+    state={...state,revision:fresh.state.revision,routeOptions:fresh.state.routeOptions,funnelOptions:fresh.state.funnelOptions,masters:fresh.state.masters,groups:fresh.state.groups};
+    runtimeInfo={...runtimeInfo,user:fresh.user,canManage:fresh.canManage};
+    employeeDirectory=null;renderAll();updateAvailability();
+    $('#add-master').disabled=!fresh.canManage;$('#add-group').disabled=!fresh.canManage;
+    notify(fresh.warning || 'Данные обновлены.',Boolean(fresh.warning));
+  }catch(error){notify(error.message,true);}
+  finally{button.disabled=false;button.textContent='Подгрузить данные';}
 });
 $('#refresh-calendar').addEventListener('click', () => loadLiveCalendar());
 $('#calendar-more').addEventListener('click', () => loadLiveCalendar(true));
@@ -496,7 +536,7 @@ $('#bind-placement').addEventListener('click', () => askConfirm('Добавит�
 }));
 
 function disableDataControls(disabled) {
-  document.querySelectorAll('form input,form select,form textarea,form button:not([data-view]),#add-master,#add-group,#new-booking,#reload-deal,#refresh-calendar,#reset-demo,#calendar-more,#bind-placement').forEach(el => el.disabled = disabled);
+  document.querySelectorAll('form input,form select,form textarea,form button:not([data-view]),#add-master,#add-group,#new-booking,#reload-deal,#refresh-calendar,#reset-demo,#calendar-more,#bind-placement,#refresh-references').forEach(el => el.disabled = disabled);
 }
 async function initializeRuntime() {
   if (initializing) return;
@@ -513,14 +553,14 @@ async function initializeRuntime() {
     disableDataControls(false);
     $('#mode-badge').textContent = runtimeInfo.error ? 'Данные недоступны' : live ? 'Битрикс24' : 'Тестовая версия';
     $('#reset-demo').hidden = live;
+    $('#refresh-references').hidden = !live;
     $('#refresh-calendar').hidden = !live;
     $('#bind-placement').hidden = !live || !runtimeInfo.user?.isAdmin;
     $('#city-filter').closest('label').hidden = true;
     if (live) {
-      $('.demo-strip').textContent = 'Данные Битрикс24. Сохранение обновляет поля контакта и сделки. Услуги загружаются из товарных позиций.';
       $('.demo-rule').innerHTML = '<summary>Как считается доступность</summary><p>Работа целиком помещается в окно клиента и смену мастера. Шаг планирования — 30 минут, между выездами — 30 минут на дорогу. Итоговый резерв проверяется сервером при сохранении.</p>';
       $('#reload-deal').hidden = false;
-      $('#view-booking .section-heading .muted').textContent = contextId ? 'Текущая сделка подставлена из вкладки Битрикс24.' : 'Найдите сделку в Битрикс24 и согласуйте время обслуживания.';
+      $('#view-booking .section-heading .muted').hidden = true;
       $('.booking-aside .field-help').textContent = 'После сохранения приложение проверит значения в контакте и сделке. Услуги берутся из товарных позиций.';
       $('.app-footer span').textContent = `Версия ${runtimeInfo.version || 'не определена'} · Битрикс24`;
       const now = new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Minsk'}).format(new Date());
@@ -536,7 +576,7 @@ async function initializeRuntime() {
     } else if (!runtimeInfo.error && contextId && !live && state.deals.some(d => d.id === contextId)) {
       const booking = state.bookings.find(b => b.dealId === contextId);
       if (booking) editBooking(booking.id); else { resetBooking('09:00',contextId); showView('booking'); }
-    } else if (!runtimeInfo.error && live) await loadLiveCalendar();
+    } else if (!runtimeInfo.error && live) { void loadDealChoices(''); await loadLiveCalendar(); }
     const unfinished = runtimeInfo.pendingOperations?.find(op => !contextId || op.dealId === contextId);
     if (live && unfinished) {
       const operation = unfinished;
@@ -549,7 +589,8 @@ async function initializeRuntime() {
     if (runtimeInfo.error) {
       disableDataControls(true);
       notify(runtimeInfo.error + ' Нажмите «Повторить загрузку». Разделы доступны, сохранение отключено до восстановления данных.', true);
-    } else if (storageError) notify(storageError,true);
+    } else if (runtimeInfo.warning) notify(runtimeInfo.warning,true);
+    else if (storageError) notify(storageError,true);
     else if ($('#notice').textContent.startsWith('Загружаем данные')) $('#notice').hidden = true;
   } catch {
     runtimeInfo = {...runtimeInfo,loading:false,error:'Не удалось запустить интерфейс. Повторите загрузку данных.'};

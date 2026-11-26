@@ -93,7 +93,7 @@ try {
       runtime: 'node20', install: 'cd /opt/app && npm ci --omit=dev',
       start: 'cd /opt/app && node src/server.js', port: '3000', cleanDeploy: 'true',
       displayName: 'Планирование выездов', description: 'Планирование выездов сотрудников Юктари',
-      changelog: process.env.DEPLOY_CHANGELOG || 'Убраны ограничения по воронкам: доступны все сделки в пределах прав сотрудника. Чтение данных переведено в фоновую загрузку с увеличенным ожиданием ответа VibeCode.',
+      changelog: process.env.DEPLOY_CHANGELOG || 'Добавлены кэш справочников и кнопка «Подгрузить данные». Настроены четыре воронки по ID, начальный список активных сделок, полный поиск и выбор сотрудников.',
       env: JSON.stringify(runtimeEnv), dataDirs: JSON.stringify([dataDir]),
     })) form.set(name, value);
     if (catalogChoice !== undefined) form.set('showInBitrix24',String(catalogChoice));

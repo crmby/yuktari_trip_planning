@@ -42,7 +42,7 @@ test('канонические UF-поля, все услуги и ID инфоб
   assert.equal(deal.products.length,2);assert.equal(deal.products[0].quantity,2);
   assert.equal(deal.years,'3');assert.equal(deal.comment,'Отдельный комментарий');
 });
-test('любые воронки и основная с ID 0 работают без привязки названия и типа клиента',async()=>{
+test('фильтры используют заданные ID воронок, контекст сделки и права CRM независимы от названия',async()=>{
   const f=fixture(),requests=[];
   const crm=createCrm(async(path,options)=>{
     requests.push(path);
@@ -52,17 +52,17 @@ test('любые воронки и основная с ID 0 работают б�
   f.deals.get('101').categoryId=0;f.deals.get('102').categoryId=42;f.deals.get('102').companyId=10;
   const first=await crm.getDeal('101',context),second=await crm.getDeal('102',context);
   assert.equal(first.funnel,'0');assert.equal(first.funnelName,'Продажа и аренда');assert.equal(first.type,'individual');
-  assert.equal(second.funnel,'42');assert.equal(second.funnelName,'Новая воронка');assert.equal(second.type,'company');
-  assert.equal((await crm.searchDeals('Тест',context)).length,2);
+  assert.equal(second.funnel,'42');assert.equal(second.funnelName,'Воронка №42');assert.equal(second.type,'company');
+  assert.equal((await crm.searchDeals('Тест',context)).length,1);
   for(const deal of f.deals.values()) deal[f.dealKeys.date]='2026-11-25';
-  assert.equal((await crm.calendar('2026-11-25',null,context)).deals.length,2);
+  assert.equal((await crm.calendar('2026-11-25',null,context)).deals.length,1);
   assert.ok(requests.filter(path=>path.startsWith('/deals?')).every(path=>!new URL(path,'https://test.invalid').searchParams.has('filter[categoryId]')));
   f.deals.get('101').categoryId=500;
   assert.equal((await crm.getDeal('101',context)).funnel,'500');
   const denied=createCrm(async(path,options)=>{if(path==='/deals/101')throw Object.assign(new Error('Нет доступа'),{status:403});return f.call(path,options);});
   await assert.rejects(denied.getDeal('101',context),{status:403});
 });
-test('список воронок листается целиком и не ограничен четырьмя названиями',async()=>{
+test('воронки выбираются по четырём ID из полного постраничного справочника',async()=>{
   const f=fixture(),offsets=[];
   const crm=createCrm(async(path,options)=>{
     if(path.startsWith('/categories/2?')) {
@@ -71,7 +71,46 @@ test('список воронок листается целиком и не ог
     }
     return f.call(path,options);
   });
-  assert.equal((await crm.metadata(context)).funnels.length,51);assert.deepEqual(offsets,[0,50]);
+  assert.deepEqual((await crm.metadata(context)).funnels.map(f=>f.id),['6','0','8','10']);assert.deepEqual(offsets,[0,50]);
+});
+test('справочники сохраняются между запусками, изолированы по сотруднику и обновляются явно',async t=>{
+  const f=await setup(t),referenceStore=createStore(join(f.directory,'references'));let calls=0,renamed=false,fail=false;
+  const call=async(path,options)=>{
+    calls++;if(fail)throw new Error('Недоступно');
+    if(path.startsWith('/categories/2?'))return {data:[{id:0,name:renamed?'Новое имя':'Старое имя'},{id:88,name:'Не показывать'}]};
+    if(path.startsWith('/lists/55/elements') && renamed)return {data:[{ID:'98',NAME:'Новый маршрут'}]};
+    return f.call(path,options);
+  };
+  const first=createCrm(call,{referenceStore});await first.metadata(context);const count=calls;
+  renamed=true;
+  const restarted=createCrm(call,{referenceStore});
+  assert.equal((await restarted.metadata({...context,authorization:'Bearer vibe_session_rotated'})).funnels[0].name,'Старое имя');assert.equal(calls,count);
+  const updated=await restarted.metadata(context,{refresh:true});assert.equal(updated.funnels[0].name,'Новое имя');assert.deepEqual(updated.routes.map(r=>r.id),['98']);
+  const afterRefresh=calls;await restarted.metadata({...context,id:'9'});assert.ok(calls>afterRefresh);
+  fail=true;await assert.rejects(restarted.metadata(context,{refresh:true}));
+  assert.equal((await restarted.metadata(context)).funnels[0].name,'Новое имя');assert.equal(f.writes.length,0);
+});
+test('поиск без текста даёт 10 активных, по названию читает все страницы четырёх воронок',async()=>{
+  const f=fixture(),template=f.deals.get('101');f.deals.clear();
+  for(let i=1;i<=75;i++)f.deals.set(String(100+i),{...template,id:String(100+i),categoryId:[6,0,8,10,99][i%5],title:'Поиск '+i,closed:i%3===0});
+  const initial=await f.crm.searchDeals('',context);assert.equal(initial.length,10);
+  assert.ok(initial.every(d=>['6','0','8','10'].includes(d.funnel) && f.deals.get(d.id).closed===false));
+  const found=await f.crm.searchDeals('Поиск',context);assert.equal(found.length,60);assert.equal(new Set(found.map(d=>d.id)).size,60);
+  assert.ok(found.some(d=>f.deals.get(d.id).closed));assert.equal((await f.crm.searchDeals('104',context)).length,0);
+  assert.equal((await f.crm.searchDeals('101',context))[0].id,'101');
+});
+test('весь список сотрудников листается и кэшируется, поиск по ФИО выполняется без новых CRM-запросов',async()=>{
+  const f=fixture();let calls=0;
+  const crm=createCrm(async(path,options)=>{
+    if(path.startsWith('/users?')){
+      calls++;const params=new URL(path,'https://test.invalid').searchParams;assert.equal(params.get('filter[active]'),'true');
+      const offset=Number(params.get('offset'));return {data:Array.from({length:offset===0?50:2},(_,i)=>({id:offset+i+1,name:'Иван',lastName:offset+i===50?'Петров':'Сотрудник '+(offset+i),active:offset+i!==51})),meta:{hasMore:offset===0}};
+    }
+    return f.call(path,options);
+  });
+  assert.equal((await crm.employees('',context)).length,51);
+  assert.deepEqual((await crm.employees('петров иВан',context)).map(p=>p.id),['51']);assert.equal(calls,2);
+  await crm.employeeDirectory(context,{refresh:true});assert.equal(calls,4);
 });
 test('маршруты используют подтверждённый тип инфоблока, без предположения lists и серверного фильтра',async()=>{
   const f=fixture(),requests=[];

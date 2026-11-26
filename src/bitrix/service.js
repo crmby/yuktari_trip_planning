@@ -28,10 +28,13 @@ function recordFromDeal(deal, old) {
 }
 export function createPlanningService({ crm, store, managerIds = [], appUrl }) {
   const canManage = context => context.isAdmin || managerIds.includes(context.id);
-  async function bootstrap(context) {
-    const meta = await crm.metadata(context), saved = await store.read();
+  async function bootstrap(context,{refresh=false}={}) {
+    const meta = await crm.metadata(context,{refresh});
+    let warning='';
+    if(refresh && canManage(context))try{await crm.employeeDirectory(context,{refresh:true});}catch(error){warning=error instanceof AppError ? error.message : 'Не удалось обновить список сотрудников.';}
+    const saved = await store.read();
     return { mode: 'bitrix', portal: context.portal, user: { id: context.id, name: context.name, isAdmin: context.isAdmin }, canManage: canManage(context),
-      pendingOperations: saved.operations.filter(op => op.userId === context.id && op.status !== 'done').map(op => ({operationId:op.id, dealId:op.dealId})),
+      warning, pendingOperations: saved.operations.filter(op => op.userId === context.id && op.status !== 'done').map(op => ({operationId:op.id, dealId:op.dealId})),
       state: { schema: 2, revision: saved.revision, mode: 'bitrix', funnelOptions:meta.funnels, routeOptions: meta.routes, masters: saved.masters, groups: saved.groups, bookings: [], deals: [], audit: [] } };
   }
   async function deal(id, context) {

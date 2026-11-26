@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { CONTACT_FIELDS, DEAL_FIELDS, normalizeField } from './fields.js';
+import { CONTACT_FIELDS, DEAL_FIELDS, PLANNING_FUNNEL_IDS, normalizeField } from './fields.js';
 import { AppError, requireId } from './errors.js';
 
 const asArray = value => Array.isArray(value) ? value : [];
@@ -29,8 +29,31 @@ function bindFields(schema, mapping) {
 export function snapshotRevision(deal, contact, mapping) {
   return createHash('sha256').update(JSON.stringify({ contactId: String(contact.id), contact: Object.values(mapping.contact).map(f => contact[f.key] ?? null), deal: Object.values(mapping.deal).map(f => deal[f.key] ?? null) })).digest('hex');
 }
-export function createCrm(call, { routeIblockId = '' } = {}) {
-  const cache = new Map();
+export function createCrm(call, { routeIblockId = '', referenceStore } = {}) {
+  const cache = new Map(), inflight = new Map();
+  const cacheKey = context => createHash('sha256').update(`${context.portal || ''}:${context.id}`).digest('hex');
+  async function cached(context,kind,refresh,load) {
+    const key=cacheKey(context)+':'+kind;
+    if(inflight.has(key)) { const value=await inflight.get(key); if(!refresh)return value; }
+    if(!refresh) {
+      const saved=referenceStore ? (await referenceStore.read()).referenceCaches?.[key] : cache.get(key);
+      if(saved?.version===1)return saved.value;
+      if(inflight.has(key))return inflight.get(key);
+    }
+    const task=(async()=>{
+      const value=await load(),entry={version:1,updatedAt:new Date().toISOString(),value};
+      if(referenceStore) await referenceStore.transaction(async(state,persist)=>{
+        state.referenceCaches ||= {};delete state.referenceCaches[key];state.referenceCaches[key]=entry;
+        const keys=Object.keys(state.referenceCaches);
+        while(keys.length>1 && (keys.length>40 || Buffer.byteLength(JSON.stringify(state))>3*1024*1024))delete state.referenceCaches[keys.shift()];
+        await persist(state);
+      });
+      else cache.set(key,entry);
+      return value;
+    })();
+    inflight.set(key,task);
+    try{return await task;}finally{if(inflight.get(key)===task)inflight.delete(key);}
+  }
   async function api(path, context, options = {}) { return call(path, { authorization: context.authorization, timeoutMs: context.timeoutMs, signal: context.signal, ...options }); }
   async function categoriesFor(context) {
     const result = [];
@@ -41,9 +64,7 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
     }
     throw new AppError(502, 'CATEGORIES_INCOMPLETE', 'Не удалось полностью загрузить воронки Битрикс24.');
   }
-  async function metadata(context) {
-    const cacheKey = createHash('sha256').update(context.authorization).digest('hex');
-    const cached = cache.get(cacheKey); if (cached && cached.until > Date.now()) return cached.value;
+  async function metadata(context,{refresh=false}={}) { return cached(context,'metadata',refresh,async()=>{
     const [deal, contact, fields, categories] = await Promise.all([
       api('/deals/fields', context), api('/contacts/fields', context), api('/userfields/contacts', context), categoriesFor(context),
     ]);
@@ -66,10 +87,11 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
       seen.add(next); start = next;
     }
     if (!routes.length) throw new AppError(503, 'ROUTES_EMPTY', 'В инфоблоке маршрутов нет доступных активных элементов.');
-    const funnels = asArray(categories.data).map(category => ({ id: String(category.id ?? category.ID), name: scalar(category.name ?? category.NAME) })).filter(f => /^\d+$/.test(f.id));
+    const all = asArray(categories.data).map(category => ({ id: String(category.id ?? category.ID), name: scalar(category.name ?? category.NAME) }));
+    const funnels = PLANNING_FUNNEL_IDS.map(id=>all.find(f=>f.id===id)).filter(Boolean);
     const value = { ...mapping, routes, funnels, iblockId, iblockType };
-    if (cache.size > 50) cache.clear(); cache.set(cacheKey, { value, until: Date.now() + 30_000 }); return value;
-  }
+    return value;
+  }); }
   async function getRaw(id, context, meta) {
     const deal = (await api(`/deals/${requireId(id, 'сделки')}`, context)).data;
     const categoryId = String(deal.categoryId ?? 0);
@@ -99,11 +121,24 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
   }
   async function getDeal(id, context) { const meta = await metadata(context); return normalize(await getRaw(id, context, meta), meta, context); }
   async function searchDeals(query, context) {
-    const q = String(query || '').trim().slice(0, 120);
-    if (/^[1-9]\d{0,14}$/.test(q)) { try { const d = await getDeal(q, context); return [{ id: d.id, title: d.title, client: d.client, funnel: d.funnel }]; } catch (error) { if ([403, 404].includes(error.status)) return []; throw error; } }
-    if (q.length < 2) return [];
-    const page = await api('/deals?' + new URLSearchParams({ 'filter[%title]':q,limit:'20',select:'id,title,categoryId','order[id]':'desc' }),context);
-    return asArray(page.data).map(deal => ({id:String(deal.id),title:scalar(deal.title),funnel:String(deal.categoryId ?? 0)}));
+    const q=String(query || '').trim().slice(0,120),result=[];let after='';
+    for(let page=0;page<100;page++) {
+      const filter={categoryId:{$in:PLANNING_FUNNEL_IDS.map(Number)}};
+      if(!q)filter.closed=false;
+      else if(/^[1-9]\d{0,14}$/.test(q))filter.id=Number(q);
+      else filter.title={$contains:q};
+      if(after)filter.id={$gt:Number(after)};
+      const params=new URLSearchParams({filter:JSON.stringify(filter),limit:q?'50':'10',select:'id,title,categoryId,closed','order[id]':'asc',withTotal:'false'});
+      const response=await api('/deals?'+params,context);
+      if(response.meta?.pageErrorSample || response.meta?.warnings?.some(w=>/TRUNCATED|PARTIAL/.test(w.code)))throw new AppError(502,'SEARCH_PARTIAL','Поиск вернул неполные данные. Повторите запрос.');
+      const items=asArray(response.data);
+      result.push(...items.filter(d=>PLANNING_FUNNEL_IDS.includes(String(d.categoryId)) && (q || d.closed!==true)).map(d=>({id:requireId(d.id),title:scalar(d.title),funnel:String(d.categoryId)})));
+      if(!q || !response.meta?.hasMore || /^[1-9]\d{0,14}$/.test(q))return result;
+      const next=scalar(response.meta.nextAfterId || items.at(-1)?.id);
+      if(!/^[1-9]\d*$/.test(next) || Number(next)<=Number(after))throw new AppError(502,'SEARCH_CURSOR_FAILED','Не удалось продолжить поиск сделок.');
+      after=next;
+    }
+    throw new AppError(422,'SEARCH_TOO_WIDE','Слишком много совпадений. Уточните название сделки.');
   }
 
   async function calendar(date, cursor, context) {
@@ -112,6 +147,7 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
     const after = cursor?.split(':')[1] || '';
     const key = meta.deal.date.key, dateTime = meta.deal.date.type === 'datetime';
     const query = new URLSearchParams({ limit: '5', 'order[id]': 'asc', select: 'id', withTotal:'false' });
+    PLANNING_FUNNEL_IDS.forEach((id,i)=>query.set('filter[categoryId][$in]['+i+']',id));
     if (dateTime) { query.set(`filter[>=${key}]`, `${date}T00:00:00+03:00`); query.set(`filter[<=${key}]`, `${date}T23:59:59+03:00`); }
     else query.set(`filter[${key}]`, date);
     if (after) query.set('filter[>id]', requireId(after));
@@ -125,15 +161,23 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
     }
     return { deals: result, next };
   }
-  async function employees(query, context) {
-    const q = String(query || '').trim().slice(0, 100);
-    const responses = await Promise.all((q ? ['%name', '%lastName'] : ['']).map(field => {
-      const params = new URLSearchParams({ limit: '50', 'filter[active]': 'true' }); if (field) params.set(`filter[${field}]`, q);
-      return api('/users?' + params, context);
-    }));
-    const people = responses.flatMap(r => asArray(r.data)).filter(p => p.active !== false);
-    return [...new Map(people.map(p => [String(p.id), { id: requireId(p.id), name: [p.lastName, p.name, p.secondName].filter(Boolean).join(' '), position: scalar(p.workPosition) }])).values()];
+  async function employeeDirectory(context,{refresh=false}={}) { return cached(context,'employees',refresh,async()=>{
+    const people=[];
+    for(let offset=0;offset<10000;offset+=50) {
+      const params=new URLSearchParams({limit:'50',offset:String(offset),sort:'id','filter[active]':'true',select:'id,name,lastName,secondName,active,workPosition'});
+      const response=await api('/users?'+params,context),items=asArray(response.data);
+      if(response.meta?.pageErrorSample || response.meta?.warnings?.some(w=>/TRUNCATED|PARTIAL/.test(w.code)))throw new AppError(502,'EMPLOYEES_PARTIAL','Список сотрудников получен не полностью. Повторите загрузку.');
+      for(const p of items)if(p.active!==false && p.active!=='N')people.push({id:requireId(p.id),name:[p.lastName,p.name,p.secondName].filter(Boolean).join(' ') || 'Сотрудник №'+p.id,position:scalar(p.workPosition)});
+      if(!response.meta?.hasMore)return [...new Map(people.map(p=>[p.id,p])).values()];
+      if(!items.length)throw new AppError(502,'EMPLOYEES_PARTIAL','Не удалось продолжить загрузку сотрудников.');
+    }
+    throw new AppError(502,'EMPLOYEES_PARTIAL','Список сотрудников слишком велик для одной загрузки.');
+  }); }
+  async function employees(query,context) {
+    const q=String(query || '').trim().toLocaleLowerCase('ru');
+    return (await employeeDirectory(context)).filter(p=>!q || q.split(/\s+/).every(word=>p.name.toLocaleLowerCase('ru').includes(word)));
   }
+
   function fieldValue(field, value, draft, property) {
     const type = field.type;
     if (value === '' && ['date', 'windowStart', 'windowEnd'].includes(property)) return field.nullable === true ? null : '';
@@ -154,5 +198,5 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
     if (Object.keys(fields.contact).length) await api(`/contacts/${requireId(contactId)}`, context, { method: 'PATCH', body: fields.contact });
     if (Object.keys(fields.deal).length) await api(`/deals/${requireId(id)}`, context, { method: 'PATCH', body: fields.deal });
   }
-  return { metadata, getDeal, getRaw, normalize, searchDeals, calendar, employees, writeFields, write, api };
+  return { metadata, getDeal, getRaw, normalize, searchDeals, calendar, employees, employeeDirectory, writeFields, write, api };
 }

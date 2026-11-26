@@ -42,6 +42,37 @@ test('канонические UF-поля, все услуги и ID инфоб
   assert.equal(deal.products.length,2);assert.equal(deal.products[0].quantity,2);
   assert.equal(deal.years,'3');assert.equal(deal.comment,'Отдельный комментарий');
 });
+test('любые воронки и основная с ID 0 работают без привязки названия и типа клиента',async()=>{
+  const f=fixture(),requests=[];
+  const crm=createCrm(async(path,options)=>{
+    requests.push(path);
+    if(path.startsWith('/categories/2?')) return {data:[{id:0,name:'Продажа и аренда'},{id:42,name:'Новая воронка'}]};
+    return f.call(path,options);
+  });
+  f.deals.get('101').categoryId=0;f.deals.get('102').categoryId=42;f.deals.get('102').companyId=10;
+  const first=await crm.getDeal('101',context),second=await crm.getDeal('102',context);
+  assert.equal(first.funnel,'0');assert.equal(first.funnelName,'Продажа и аренда');assert.equal(first.type,'individual');
+  assert.equal(second.funnel,'42');assert.equal(second.funnelName,'Новая воронка');assert.equal(second.type,'company');
+  assert.equal((await crm.searchDeals('Тест',context)).length,2);
+  for(const deal of f.deals.values()) deal[f.dealKeys.date]='2026-11-25';
+  assert.equal((await crm.calendar('2026-11-25',null,context)).deals.length,2);
+  assert.ok(requests.filter(path=>path.startsWith('/deals?')).every(path=>!new URL(path,'https://test.invalid').searchParams.has('filter[categoryId]')));
+  f.deals.get('101').categoryId=500;
+  assert.equal((await crm.getDeal('101',context)).funnel,'500');
+  const denied=createCrm(async(path,options)=>{if(path==='/deals/101')throw Object.assign(new Error('Нет доступа'),{status:403});return f.call(path,options);});
+  await assert.rejects(denied.getDeal('101',context),{status:403});
+});
+test('список воронок листается целиком и не ограничен четырьмя названиями',async()=>{
+  const f=fixture(),offsets=[];
+  const crm=createCrm(async(path,options)=>{
+    if(path.startsWith('/categories/2?')) {
+      const offset=Number(new URL(path,'https://test.invalid').searchParams.get('offset'));offsets.push(offset);
+      return {data:Array.from({length:offset===0?50:1},(_,i)=>({id:offset+i,name:`Воронка ${offset+i}`}))};
+    }
+    return f.call(path,options);
+  });
+  assert.equal((await crm.metadata(context)).funnels.length,51);assert.deepEqual(offsets,[0,50]);
+});
 test('маршруты используют подтверждённый тип инфоблока, без предположения lists и серверного фильтра',async()=>{
   const f=fixture(),requests=[];
   const crm=createCrm(async(path,options)=>{
@@ -80,7 +111,7 @@ test('ошибки ключа, несовпадения приложения и 
 });
 test('отказ начальной загрузки сообщает этап и код Битрикс24 без текста CRM и параметров',async()=>{
   const call=createVibeClient({appKey:'vibe_app_test',fetchImpl:async()=>new Response(JSON.stringify({success:false,error:{code:'BITRIX_ERROR',b24Code:'ACCESS_DENIED_EXTEND',cause:'b24_permission',message:'private client address',details:{token:'private token'}}}),{status:422})});
-  for (const [path,label] of [['/deals/fields','загрузка полей сделок'],['/contacts/fields','загрузка полей контактов'],['/userfields/contacts','загрузка настроек пользовательских полей контакта'],['/deal-categories','загрузка воронок сделок'],['/lists/123/elements?filter=private-search','загрузка справочника маршрутов']]) {
+  for (const [path,label] of [['/deals/fields','загрузка полей сделок'],['/contacts/fields','загрузка полей контактов'],['/userfields/contacts','загрузка настроек пользовательских полей контакта'],['/categories/2?offset=0','загрузка воронок сделок'],['/lists/123/elements?filter=private-search','загрузка справочника маршрутов']]) {
     await assert.rejects(call(path,{authorization:context.authorization}),error=>{
       assert.equal(error.status,422);assert.equal(error.code,'BITRIX_ERROR');assert.equal(error.message.includes(label),true);
       assert.match(error.message,/ACCESS_DENIED_EXTEND/);assert.match(error.message,/прав сотрудника/);
@@ -164,4 +195,24 @@ test('API защищает запись от другого сайта, не о�
   assert.equal((await bootstrap.text()).includes('vibe_session_'),false);
   assert.equal((await fetch(base+'/api/settings',{method:'POST',headers:{...headers,'Content-Type':'application/json',Origin:'https://other.invalid'},body:'{}'})).status,403);
   assert.equal((await fetch(base+'/var/planning/planning.json',{headers})).status,404);
+});
+test('фоновое чтение отвечает до авторизации, результат закрыт до проверки и изолирован по сессии',async t=>{
+  const f=await setup(t);let release,authCalls=0,authOptions;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const server=createServer(createApp({mode:'bitrix',portal:context.portal,dataDir:f.directory,appUrl:'https://test.invalid'},{call:f.call,authenticate:async(req,options)=>{authCalls++;authOptions=options;await gate;return context;}}));
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>{release();server.close(resolve);server.closeAllConnections();}));
+  const base=`http://127.0.0.1:${server.address().port}`,headers={'x-vibe-authorization':context.authorization,'x-planner-async':'1'};
+  const initial=await fetch(base+'/api/bootstrap',{headers,signal:AbortSignal.timeout(2000)});
+  assert.equal(initial.status,202);const {jobId}=await initial.json();
+  const poll=()=>fetch(base+'/api/read-jobs/'+jobId,{headers});
+  assert.equal((await poll()).status,202);
+  assert.equal((await (await fetch(base+'/api/bootstrap',{headers})).json()).jobId,jobId);assert.equal(authCalls,1);
+  assert.equal((await fetch(base+'/api/read-jobs/'+jobId,{headers:{'x-vibe-authorization':'Bearer vibe_session_other'}})).status,404);
+  assert.equal((await fetch(base+'/api/read-jobs/'+jobId)).status,401);
+  assert.equal(authOptions.timeoutMs,150000);assert.ok(authOptions.signal instanceof AbortSignal);
+  release();
+  let result;
+  for(let i=0;i<30;i++){result=await poll();if(result.status!==202)break;await new Promise(resolve=>setTimeout(resolve,10));}
+  assert.equal(result.status,200);const text=await result.text();assert.ok(text.includes('funnelOptions'));assert.equal(text.includes('vibe_session_'),false);assert.equal(authCalls,1);assert.equal(f.writes.length,0);
 });

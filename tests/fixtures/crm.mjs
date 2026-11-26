@@ -1,6 +1,6 @@
-import { CONTACT_FIELDS, DEAL_FIELDS, FUNNEL_NAMES } from '../../src/bitrix/fields.js';
+import { CONTACT_FIELDS, DEAL_FIELDS } from '../../src/bitrix/fields.js';
 import { createCrm } from '../../src/bitrix/crm.js';
-import { createDemoState } from '../../public/js/planner.js';
+import { FUNNELS, createDemoState } from '../../public/js/planner.js';
 
 export const context = { id:'7', name:'Тестовый менеджер', isAdmin:true, portal:'example.bitrix24.by', authorization:'Bearer vibe_session_test' };
 const canonical = code => 'ufCrm' + code.replace('UF_CRM_', '').replaceAll('_', '');
@@ -19,13 +19,13 @@ export function fixture() {
     if (path==='/deals/fields') return {data:schema(dealKeys)};
     if (path==='/contacts/fields') return {data:schema(contactKeys)};
     if (path==='/userfields/contacts') return {data:[{fieldName:CONTACT_FIELDS.route,settings:{IBLOCK_ID:55},multiple:'N'}]};
-    if (path==='/deal-categories') return {data:FUNNEL_NAMES.map((name,i)=>({id:i+1,name}))};
+    if (path.startsWith('/categories/2?')) return {data:FUNNELS.map((name,i)=>({id:i+1,name}))};
     if (entity==='lists' && related==='type') return {data:{iblockTypeId:'lists'}};
     if (entity==='lists') return url.searchParams.get('start')==='0' ? {data:[{ID:'81',NAME:'Тестовый маршрут'}],meta:{next:50}} : {data:[{ID:'82',NAME:'Другой маршрут'}],meta:{}};
     if (entity==='users') return {data:id?{id:Number(id),lastName:'Сотрудник',name:'Иван',active:true}:[{id:8,lastName:'Сотрудник',name:'Иван',active:true}]};
     if (entity==='placements') { writes.push({path,...options}); return {success:true,data:{}}; }
     if (entity==='deals' && related==='products') return {data:[{productName:'Услуга 1',price:35,quantity:2},{productName:'Услуга 2',price:15,quantity:1}]};
-    if (!id && entity==='deals') return {data:[...deals.values()].filter(d=>String(d.categoryId)===url.searchParams.get('filter[categoryId]') && (!url.searchParams.has(`filter[${dealKeys.date}]`) || d[dealKeys.date]===url.searchParams.get(`filter[${dealKeys.date}]`))),meta:{hasMore:false}};
+    if (!id && entity==='deals') return {data:[...deals.values()].filter(d=>(!url.searchParams.has('filter[categoryId]') || String(d.categoryId)===url.searchParams.get('filter[categoryId]')) && (!url.searchParams.has(`filter[${dealKeys.date}]`) || d[dealKeys.date]===url.searchParams.get(`filter[${dealKeys.date}]`))),meta:{hasMore:false}};
     const value=(entity==='deals'?deals:contacts).get(id);
     if (!value) throw new Error('Unknown fixture path: '+path);
     if (options.method==='PATCH') {

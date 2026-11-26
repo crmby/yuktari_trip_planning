@@ -4,6 +4,7 @@ import { createStore } from './store.js';
 import { createPlanningService } from './service.js';
 import { AppError } from './errors.js';
 import { version } from '../build.js';
+import { createReadJobs } from './read-jobs.js';
 
 export function createBitrixApi(config, dependencies = {}) {
   const call = dependencies.call || createVibeClient({ appKey: config.appKey, fetchImpl: dependencies.fetchImpl });
@@ -11,6 +12,7 @@ export function createBitrixApi(config, dependencies = {}) {
   const crm = dependencies.crm || createCrm(call, config);
   const store = dependencies.store || createStore(config.dataDir);
   const service = createPlanningService({ crm, store, managerIds: config.managerIds, appUrl: config.appUrl });
+  const jobs = createReadJobs();
   function send(res, status, data) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); }
   async function readBody(req) {
     if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw new AppError(415, 'JSON_REQUIRED', 'Требуется JSON-запрос.');
@@ -19,10 +21,13 @@ export function createBitrixApi(config, dependencies = {}) {
     try { const value = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(); return value; }
     catch { throw new AppError(400, 'INVALID_JSON', 'Некорректный JSON-запрос.'); }
   }
-  return async function handle(req, res, url) {
+  function failure(error) {
+    const known = error instanceof AppError;
+    return {status:known ? error.status : 500,body:{success:false,error:{code:known ? error.code : 'INTERNAL_ERROR',message:known ? error.message : 'Не удалось выполнить операцию. Обратитесь к администратору приложения.'}}};
+  }
+  async function execute(req, url, options = {}) {
     try {
-      if (req.method === 'GET' && url.pathname === '/api/runtime') return send(res, 200, { mode: 'bitrix', version });
-      const context = { ...await authenticate(req), portal: config.portal };
+      const context = { ...await authenticate(req,options), ...options, portal: config.portal };
       if (req.method === 'POST') {
         const origin = config.appUrl ? new URL(config.appUrl).origin : '';
         if (!origin || req.headers.origin !== origin || req.headers['x-requested-with'] !== 'yuktari-planner') throw new AppError(403, 'CSRF_REJECTED', 'Запрос должен быть отправлен из интерфейса приложения.');
@@ -42,11 +47,19 @@ export function createBitrixApi(config, dependencies = {}) {
       else if (req.method === 'POST' && url.pathname === '/api/settings') result = await service.settings(await readBody(req), context);
       else if (req.method === 'POST' && url.pathname === '/api/placement') { await readBody(req); result = await service.placement(context); }
       else throw new AppError(404, 'NOT_FOUND', 'Маршрут API не найден.');
-      send(res, 200, { success: true, data: result });
+      return {status:200,body:{success:true,data:result}};
     } catch (error) {
-      const known = error instanceof AppError;
-      if (!res.headersSent) send(res, known ? error.status : 500, { success: false, error: { code: known ? error.code : 'INTERNAL_ERROR', message: known ? error.message : 'Не удалось выполнить операцию. Обратитесь к администратору приложения.' } });
-      else res.end();
+      return failure(error);
     }
+  }
+  return async function handle(req,res,url) {
+    try {
+      if (req.method === 'GET' && url.pathname === '/api/runtime') return send(res,200,{mode:'bitrix',version});
+      let result;
+      if (req.method === 'GET' && /^\/api\/read-jobs\/[a-f0-9-]{36}$/.test(url.pathname)) result=jobs.poll(req,url.pathname.split('/').at(-1));
+      else if (req.method === 'GET' && req.headers['x-planner-async'] === '1') result=jobs.start(req,url.pathname+url.search,options=>execute(req,url,options));
+      else result=await execute(req,url);
+      send(res,result.status,result.body);
+    } catch(error) { const result=failure(error); send(res,result.status,result.body); }
   };
 }

@@ -59,12 +59,14 @@ function options(select, items, empty) {
   select.innerHTML = (empty === undefined ? '' : `<option value="">${escape(empty)}</option>`) + items.map(item => `<option value="${escape(item.value)}">${escape(item.label)}</option>`).join('');
   if ([...select.options].some(option => option.value === previous)) select.value = previous;
 }
+const funnelOptions = () => live ? state.funnelOptions || [] : FUNNELS.map((name,i) => ({id:String(i),name}));
+const funnelLabel = deal => live ? deal.funnelName || funnelOptions().find(f => f.id === String(deal.funnel))?.name || '' : FUNNELS[deal.funnel];
 function renderSelectors() {
   const routes = routeOptions().map(route => ({ value: route.id, label: route.label }));
   options($('#route-filter'), routes, 'Все направления');
   options($('#booking-route'), routes);
   options($('#city-filter'), [...new Set(state.deals.map(d => d.city).concat(state.bookings.map(b => b.city)).filter(Boolean))].sort().map(city => ({ value: city, label: city })), 'Все города');
-  options($('#funnel-filter'), FUNNELS.map((label, i) => ({ value: String(i), label })), 'Все воронки');
+  options($('#funnel-filter'), funnelOptions().map(f => ({ value: f.id, label:f.name })), 'Все воронки');
   const masters = state.masters.map(m => ({ value: m.id, label: m.name + (m.active ? '' : ' · неактивен') }));
   options($('#master-filter'), masters, 'Все мастера');
   options($('#schedule-master'), masters);
@@ -105,7 +107,7 @@ function bookingRow(b, index) {
   const errors = conflicts(b, state);
   return `<tr class="${b.special ? 'row-special ' : ''}${errors.length ? 'row-conflict ' : ''}${b.status === 'cancelled' ? 'row-cancelled' : ''}">
     <td class="slot-cell">${escape(b.position)}<span class="slot-index">№ ${index}</span></td><td>${escape(b.years || '—')}</td>
-    <td><span class="cell-title">${escape(deal.client)}</span>${escape(b.city || deal.city)}<span class="cell-detail">${escape(routeLabel(b.route))}</span><button class="text-link cell-detail" type="button" data-edit="${escape(b.id)}">${live ? 'Сделка' : 'Демо-сделка'} №${escape(deal.id)}</button><span class="cell-detail">${escape(FUNNELS[deal.funnel])}</span></td>
+    <td><span class="cell-title">${escape(deal.client)}</span>${escape(b.city || deal.city)}<span class="cell-detail">${escape(routeLabel(b.route))}</span><button class="text-link cell-detail" type="button" data-edit="${escape(b.id)}">${live ? 'Сделка' : 'Демо-сделка'} №${escape(deal.id)}</button><span class="cell-detail">${escape(funnelLabel(deal))}</span></td>
     <td>${escape(b.address)}${b.apartment ? `<span class="cell-detail">Кв. / офис ${escape(b.apartment)}</span>` : ''}</td><td>${escape(deal.phone || '—')}</td>
     <td>${deal.products.map(p => `<div class="cell-product">${escape(p.name)}<span class="cell-detail">${escape(p.quantity ?? 1)} × ${money(p.price, p.currency)}</span></div>`).join('')}<span class="cell-detail">Работа: ${b.duration} мин.</span></td>
     <td><span class="cell-window">${escape(b.windowStart)}–${escape(b.windowEnd)}</span><div class="cell-comment">${escape(b.comment || 'Без дополнительных пожеланий')}</div><span class="cell-detail">Резерв мастера: ${escape(b.actualStart)}–${time(minutes(b.actualStart) + b.duration)}</span></td>
@@ -145,7 +147,7 @@ function draftFromForm() {
 }
 function renderDealInfo() {
   const deal = state.deals.find(d => d.id === field('dealId').value);
-  $('#deal-info').innerHTML = deal ? `<p><strong>${escape(deal.client)}</strong> · ${escape(deal.phone || '')}</p><p class="muted">${escape(FUNNELS[deal.funnel])}</p><ul class="product-list">${deal.products.map(p => `<li><span>${escape(p.name)} × ${escape(p.quantity ?? 1)}</span><span>${money(p.price, p.currency)}</span></li>`).join('')}</ul>` : '';
+  $('#deal-info').innerHTML = deal ? `<p><strong>${escape(deal.client)}</strong> · ${escape(deal.phone || '')}</p><p class="muted">${escape(funnelLabel(deal))}</p><ul class="product-list">${deal.products.map(p => `<li><span>${escape(p.name)} × ${escape(p.quantity ?? 1)}</span><span>${money(p.price, p.currency)}</span></li>`).join('')}</ul>` : '';
 }
 function updateAvailability() {
   const result = findSlot(draftFromForm(), state, editingBooking);

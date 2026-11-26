@@ -7,7 +7,7 @@ function requestLabel(path) {
     '/me':'проверка ключа и сессии', '/users/me':'проверка профиля сотрудника',
     '/deals/fields':'загрузка полей сделок', '/contacts/fields':'загрузка полей контактов',
     '/userfields/contacts':'загрузка настроек пользовательских полей контакта',
-    '/deal-categories':'загрузка воронок сделок', '/deals':'поиск и календарь сделок',
+    '/categories/2':'загрузка воронок сделок', '/deals':'поиск и календарь сделок',
     '/users':'загрузка сотрудников', '/placements/bind':'привязка вкладки сделки',
   };
   if (labels[pathname]) return labels[pathname];
@@ -30,14 +30,14 @@ function accessMessage(status, code) {
   return 'Битрикс24 не выполнил запрос.';
 }
 export function createVibeClient({ appKey, fetchImpl = fetch }) {
-  return async function call(path, { authorization, method = 'GET', body, signal } = {}) {
+  return async function call(path, { authorization, method = 'GET', body, signal, timeoutMs = 10_000 } = {}) {
     if (!/^vibe_app_[A-Za-z0-9_-]+$/.test(appKey || '')) throw new AppError(503, 'APP_NOT_CONFIGURED', 'Добавьте VIBE_APP_KEY OAuth-приложения в настройки сервера.');
     if (!/^Bearer vibe_session_[A-Za-z0-9_-]+$/.test(authorization || '')) throw new AppError(401, 'AUTH_REQUIRED', 'Откройте приложение из Битрикс24 и разрешите доступ OAuth-приложению.');
     if (!path.startsWith('/') || path.startsWith('//')) throw new AppError(500, 'INVALID_API_PATH', 'Ошибка адреса API.');
     let response;
     try {
       response = await fetchImpl(BASE + path, {
-        method, redirect: 'error', signal: signal || AbortSignal.timeout(10_000),
+        method, redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
         headers: { 'X-Api-Key': appKey, Authorization: authorization, 'Content-Type': 'application/json', 'X-Crm-Api': 'v2' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
@@ -62,14 +62,14 @@ export function createVibeClient({ appKey, fetchImpl = fetch }) {
 }
 
 export function createAuthenticator(call, portal) {
-  return async function authenticate(req) {
+  return async function authenticate(req, options = {}) {
     if (req.headers['x-vibe-caller-kind'] === 'external-api') throw new AppError(401, 'AUTH_REQUIRED', 'Откройте приложение от имени сотрудника Битрикс24.');
     const authorization = req.headers['x-vibe-authorization'];
-    const { data } = await call('/me', { authorization });
+    const { data } = await call('/me', { ...options, authorization });
     const actual = typeof data?.portal === 'string' ? data.portal : data?.portal?.domain;
     const id = String(data?.currentUser?.bitrixUserId || '');
     if (data.type !== 'oauth_app' || !actual || actual.replace(/^https:\/\//, '').replace(/\/$/, '').toLowerCase() !== portal.toLowerCase() || !/^[1-9]\d*$/.test(id)) throw new AppError(403, 'PORTAL_MISMATCH', 'VibeCode не подтвердил сотрудника целевого портала.');
-    const profile = (await call('/users/me', { authorization })).data;
+    const profile = (await call('/users/me', { ...options, authorization })).data;
     if (String(profile?.id) !== id || profile.active === false) throw new AppError(403, 'USER_NOT_CONFIRMED', 'Не удалось подтвердить активного сотрудника.');
     return { id, name: [profile.lastName, profile.name].filter(Boolean).join(' '), isAdmin: profile.isAdmin === true, authorization };
   };

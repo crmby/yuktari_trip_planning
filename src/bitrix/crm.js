@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { CONTACT_FIELDS, DEAL_FIELDS, FUNNEL_NAMES, normalizeField } from './fields.js';
+import { CONTACT_FIELDS, DEAL_FIELDS, normalizeField } from './fields.js';
 import { AppError, requireId } from './errors.js';
 
 const asArray = value => Array.isArray(value) ? value : [];
@@ -31,12 +31,21 @@ export function snapshotRevision(deal, contact, mapping) {
 }
 export function createCrm(call, { routeIblockId = '' } = {}) {
   const cache = new Map();
-  async function api(path, context, options = {}) { return call(path, { authorization: context.authorization, ...options }); }
+  async function api(path, context, options = {}) { return call(path, { authorization: context.authorization, timeoutMs: context.timeoutMs, signal: context.signal, ...options }); }
+  async function categoriesFor(context) {
+    const result = [];
+    for (let offset = 0; offset < 5000; offset += 50) {
+      const page = await api('/categories/2?' + new URLSearchParams({limit:'50',offset:String(offset)}), context);
+      const items = asArray(page.data); result.push(...items);
+      if (items.length < 50 && !page.meta?.hasMore) return {data:result};
+    }
+    throw new AppError(502, 'CATEGORIES_INCOMPLETE', 'Не удалось полностью загрузить воронки Битрикс24.');
+  }
   async function metadata(context) {
     const cacheKey = createHash('sha256').update(context.authorization).digest('hex');
     const cached = cache.get(cacheKey); if (cached && cached.until > Date.now()) return cached.value;
     const [deal, contact, fields, categories] = await Promise.all([
-      api('/deals/fields', context), api('/contacts/fields', context), api('/userfields/contacts', context), api('/deal-categories', context),
+      api('/deals/fields', context), api('/contacts/fields', context), api('/userfields/contacts', context), categoriesFor(context),
     ]);
     const mapping = { deal: bindFields(deal.data, DEAL_FIELDS), contact: bindFields(contact.data, CONTACT_FIELDS) };
     const field = asArray(fields.data).find(f => normalizeField(f.fieldName) === normalizeField(CONTACT_FIELDS.route));
@@ -57,15 +66,14 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
       seen.add(next); start = next;
     }
     if (!routes.length) throw new AppError(503, 'ROUTES_EMPTY', 'В инфоблоке маршрутов нет доступных активных элементов.');
-    const funnels = asArray(categories.data).map(category => ({ id: String(category.id ?? category.ID), name: scalar(category.name ?? category.NAME) })).map(category => ({ ...category, index: FUNNEL_NAMES.findIndex(name => name.trim().toLowerCase() === category.name.trim().toLowerCase()) })).filter(f => f.index >= 0);
-    if (!funnels.length) throw new AppError(503, 'FUNNELS_NOT_FOUND', 'Не найдены согласованные воронки. Проверьте названия и права сотрудника.');
+    const funnels = asArray(categories.data).map(category => ({ id: String(category.id ?? category.ID), name: scalar(category.name ?? category.NAME) })).filter(f => /^\d+$/.test(f.id));
     const value = { ...mapping, routes, funnels, iblockId, iblockType };
     if (cache.size > 50) cache.clear(); cache.set(cacheKey, { value, until: Date.now() + 30_000 }); return value;
   }
   async function getRaw(id, context, meta) {
     const deal = (await api(`/deals/${requireId(id, 'сделки')}`, context)).data;
-    const funnel = meta.funnels.find(f => f.id === String(deal.categoryId));
-    if (!funnel) throw new AppError(403, 'FUNNEL_NOT_ALLOWED', 'Сделка не относится к согласованным воронкам.');
+    const categoryId = String(deal.categoryId ?? 0);
+    const funnel = meta.funnels.find(f => f.id === categoryId) || {id:categoryId,name:`Воронка №${categoryId}`};
     const contacts = asArray(deal.contactIds).filter(Boolean);
     const contactId = deal.contactId || (contacts.length === 1 ? contacts[0] : null);
     if (!contactId) throw new AppError(409, 'PRIMARY_CONTACT_REQUIRED', 'Укажите основной контакт в карточке сделки. Адрес, квартира и маршрут берутся из него.');
@@ -78,8 +86,8 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
     const routeValue = c('route');
     const routeId = Array.isArray(routeValue) ? routeValue.length === 1 ? scalar(routeValue[0]) : '' : scalar(routeValue);
     return {
-      id: requireId(deal.id), title: scalar(deal.title), contactId: requireId(contact.id), funnel: funnel.index,
-      type: funnel.index === 0 || Number(deal.companyId) > 0 ? 'company' : 'individual',
+      id: requireId(deal.id), title: scalar(deal.title), contactId: requireId(contact.id), funnel: funnel.id, funnelName: funnel.name,
+      type: Number(deal.companyId) > 0 ? 'company' : 'individual',
       client: [contact.lastName, contact.name, contact.secondName].filter(Boolean).join(' ') || scalar(deal.title),
       phone: scalar(contact.phone), address: scalar(c('address')), apartment: scalar(c('apartment')), route: routeId,
       date: crmDate(d('date')), windowStart: crmTime(d('windowStart')), windowEnd: crmTime(d('windowEnd')),
@@ -91,20 +99,19 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
   }
   async function getDeal(id, context) { const meta = await metadata(context); return normalize(await getRaw(id, context, meta), meta, context); }
   async function searchDeals(query, context) {
-    const meta = await metadata(context), q = String(query || '').trim().slice(0, 120);
+    const q = String(query || '').trim().slice(0, 120);
     if (/^[1-9]\d{0,14}$/.test(q)) { try { const d = await getDeal(q, context); return [{ id: d.id, title: d.title, client: d.client, funnel: d.funnel }]; } catch (error) { if ([403, 404].includes(error.status)) return []; throw error; } }
     if (q.length < 2) return [];
-    const pages = await Promise.all(meta.funnels.map(f => api('/deals?' + new URLSearchParams({ 'filter[categoryId]': f.id, 'filter[%title]': q, limit: '5', select: 'id,title,categoryId', 'order[id]': 'desc' }), context)));
-    return pages.flatMap((page, i) => asArray(page.data).map(deal => ({ id: String(deal.id), title: scalar(deal.title), funnel: meta.funnels[i].index })));
+    const page = await api('/deals?' + new URLSearchParams({ 'filter[%title]':q,limit:'20',select:'id,title,categoryId','order[id]':'desc' }),context);
+    return asArray(page.data).map(deal => ({id:String(deal.id),title:scalar(deal.title),funnel:String(deal.categoryId ?? 0)}));
   }
+
   async function calendar(date, cursor, context) {
     const meta = await metadata(context); const result = [];
     let next = null;
-    // One funnel per page keeps every response small enough for the platform gateway.
-    const index = Number(cursor?.split(':')[0] || 0), after = cursor?.split(':')[1] || '';
-    const funnel = meta.funnels[index]; if (!funnel) return { deals: [], next: null };
+    const after = cursor?.split(':')[1] || '';
     const key = meta.deal.date.key, dateTime = meta.deal.date.type === 'datetime';
-    const query = new URLSearchParams({ 'filter[categoryId]': funnel.id, limit: '5', 'order[id]': 'asc', select: 'id', withTotal:'false' });
+    const query = new URLSearchParams({ limit: '5', 'order[id]': 'asc', select: 'id', withTotal:'false' });
     if (dateTime) { query.set(`filter[>=${key}]`, `${date}T00:00:00+03:00`); query.set(`filter[<=${key}]`, `${date}T23:59:59+03:00`); }
     else query.set(`filter[${key}]`, date);
     if (after) query.set('filter[>id]', requireId(after));
@@ -114,8 +121,8 @@ export function createCrm(call, { routeIblockId = '' } = {}) {
     if (page.meta?.hasMore) {
       const last = scalar(page.meta.nextAfterId || page.data.at(-1)?.id);
       if (!last || last === after) throw new AppError(502, 'CALENDAR_CURSOR_FAILED', 'Ошибка продолжения списка сделок.');
-      next = `${index}:${last}`;
-    } else if (index + 1 < meta.funnels.length) next = `${index + 1}:`;
+      next = `0:${last}`;
+    }
     return { deals: result, next };
   }
   async function employees(query, context) {

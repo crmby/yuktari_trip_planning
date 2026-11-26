@@ -5,6 +5,7 @@ const assets = new Map([
   ['/css/b24-tokens.css', ['css/b24-tokens.css', 'text/css; charset=utf-8']],
   ['/css/app.css', ['css/app.css', 'text/css; charset=utf-8']],
   ['/js/app.js', ['js/app.js', 'text/javascript; charset=utf-8']],
+  ['/js/planner.js', ['js/planner.js', 'text/javascript; charset=utf-8']],
 ]);
 
 export function createApp({ portal = '' } = {}) {
@@ -13,7 +14,8 @@ export function createApp({ portal = '' } = {}) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' https://vibecode.bitrix24.tech" + (portal ? ` https://${portal}` : ''));
-    const path = new URL(req.url, 'http://localhost').pathname;
+    let path;
+    try { path = new URL(req.url, 'http://localhost').pathname; } catch { res.writeHead(400); return res.end(); }
     if (!['GET', 'HEAD'].includes(req.method)) {
       res.writeHead(405, { Allow: 'GET, HEAD' });
       return res.end();

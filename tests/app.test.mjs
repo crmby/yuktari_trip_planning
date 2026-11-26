@@ -28,5 +28,5 @@ test('сервис отдаёт только каркас и health; конфи�
   assert.equal((await fetch(base, { method: 'POST' })).status, 405);
   assert.equal((await fetch(base, { method: 'HEAD' })).status, 200);
   assert.equal((await fetch(base + '/health')).status, 200);
-  for (const path of ['/css/b24-tokens.css', '/css/app.css', '/js/app.js']) assert.equal((await fetch(base + path)).status, 200);
+  for (const path of ['/css/b24-tokens.css', '/css/app.css', '/js/app.js', '/js/planner.js']) assert.equal((await fetch(base + path)).status, 200);
 });

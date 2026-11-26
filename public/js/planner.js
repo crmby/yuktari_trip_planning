@@ -25,10 +25,10 @@ export function shiftFor(master, date) {
 export function groupsFor(master, state) {
   return (state.groups || []).filter(group => group.active && master.groupIds?.includes(group.id));
 }
-export function routesFor(master, state) { return [...new Set(groupsFor(master, state).flatMap(group => group.routes))]; }
+export function routesFor(master, state) { return [...new Set(groupsFor(master, state).flatMap(group => group.routes))].filter(route => !master.directions?.length || master.directions.includes(route)); }
 export function typesFor(master, state) { return [...new Set(groupsFor(master, state).flatMap(group => group.types))]; }
 export function eligible(master, draft, deal, state) {
-  return master.active && groupsFor(master, state).some(group => group.routes.includes(draft.route) && group.types.includes(deal.type));
+  return master.active && (!master.directions?.length || master.directions.includes(draft.route)) && groupsFor(master, state).some(group => group.routes.includes(draft.route) && group.types.includes(deal.type));
 }
 function blocks(state, masterId, date, ignoreId) {
   return state.bookings.filter(b => b.id !== ignoreId && b.masterId === masterId && b.date === date && b.status !== 'cancelled');
@@ -37,11 +37,10 @@ function fits(start, duration, bookings) {
   return bookings.every(b => start >= minutes(b.actualStart) + b.duration + BUFFER || start + duration + BUFFER <= minutes(b.actualStart));
 }
 export function validateDraft(draft, state) {
-  if (!state.deals.some(d => d.id === draft.dealId)) return 'Выберите тестовую сделку.';
+  if (!state.deals.some(d => d.id === draft.dealId)) return 'Выберите сделку.';
   if (!validDate(draft.date)) return 'Укажите корректную дату.';
-  if (!ROUTES.includes(draft.route)) return 'Выберите маршрут.';
+  if (!(state.routeOptions ? state.routeOptions.map(r => r.id) : ROUTES).includes(draft.route)) return 'Выберите маршрут.';
   if (!draft.address?.trim()) return 'Укажите адрес обслуживания.';
-  if (!draft.city?.trim()) return 'Укажите город или населённый пункт.';
   if (![30, 60, 120].includes(draft.duration)) return 'Выберите длительность: 30, 60 или 120 минут.';
   const from = minutes(draft.windowStart), to = minutes(draft.windowEnd);
   if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) return 'Окончание окна приезда должно быть позже начала.';

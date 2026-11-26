@@ -1,10 +1,12 @@
 {
   "name": "yuktari-trip-planning",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Планирование выездов внутри Битрикс24 VibeCode",
   "type": "module",
-  "engines": { "node": ">=20.12.0" },
+  "engines": {
+    "node": ">=20.12.0"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
@@ -14,5 +16,8 @@
     "deploy": "node scripts/deploy.mjs",
     "deploy:check": "node scripts/deploy.mjs --dry-run"
   },
-  "repository": { "type": "git", "url": "https://github.com/crmby/yuktari_trip_planning.git" }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crmby/yuktari_trip_planning.git"
+  }
 }

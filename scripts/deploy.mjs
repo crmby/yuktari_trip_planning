@@ -63,15 +63,21 @@ try {
     const id = encodeURIComponent(serverId);
     const server = await api(`/infra/servers/${id}/ssh`, key);
     if (server.mode !== 'BLACKHOLE') throw new Error('Для этого проекта требуется существующий сервер в режиме BLACKHOLE. Режим доступа не изменён.');
+    const mode = process.env.APP_MODE || (process.env.VIBE_APP_KEY ? 'bitrix' : 'demo');
+    if (!['demo', 'bitrix'].includes(mode)) throw new Error('Заполните APP_MODE: demo или bitrix.');
+    if (mode === 'bitrix' && (!/^vibe_app_[A-Za-z0-9_-]+$/.test(process.env.VIBE_APP_KEY || '') || !/^https:\/\/[a-z0-9.-]+\/?$/i.test(process.env.APP_URL || ''))) throw new Error('Заполните VIBE_APP_KEY и точный HTTPS APP_URL для режима bitrix.');
+    const dataDir = '/opt/data/yuktari-trip-planning';
+    const runtimeEnv = { NODE_ENV:'production',HOST:'0.0.0.0',PORT:'3000',B24_DOMAIN:portal,APP_MODE:mode,DATA_DIR:dataDir };
+    for (const name of ['VIBE_APP_KEY','APP_URL','PLANNER_MANAGER_IDS','B24_ROUTE_IBLOCK_ID','B24_ROUTE_IBLOCK_TYPE']) if (process.env[name]) runtimeEnv[name] = process.env[name];
     const form = new FormData();
     form.set('archive', new Blob([readFileSync(archive)], { type: 'application/gzip' }), 'app.tar.gz');
     for (const [name, value] of Object.entries({
       runtime: 'node20', install: 'cd /opt/app && npm ci --omit=dev',
       start: 'cd /opt/app && node src/server.js', port: '3000', cleanDeploy: 'true',
       displayName: 'Планирование выездов', description: 'Планирование выездов сотрудников Юктари',
-      env: JSON.stringify({ NODE_ENV: 'production', HOST: '0.0.0.0', PORT: '3000', B24_DOMAIN: portal }),
+      env: JSON.stringify(runtimeEnv), dataDirs: JSON.stringify([dataDir]),
     })) form.set(name, value);
-    // The management key is used only to deploy; no portal data API exists yet.
+    // The management key is never passed into the application runtime.
     console.log('Загрузка и деплой приложения…');
     const result = await api(`/infra/servers/${id}/deploy?stream=false`, key, { method: 'POST', body: form });
     if (result.steps?.some(step => ['failed', 'error'].includes(String(step.status).toLowerCase()))) throw new Error('Один из шагов деплоя завершился ошибкой. Проверьте журнал VibeCode.');

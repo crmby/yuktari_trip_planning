@@ -92,6 +92,13 @@ test('произвольные подробности в коде причины
   const call=createVibeClient({appKey:'vibe_app_test',fetchImpl:async()=>new Response(JSON.stringify({success:false,error:{code:'BITRIX_ERROR',b24Code:'vibe_session_private',cause:'private explanation',message:'private description'}}),{status:422})});
   await assert.rejects(call('/contacts/fields',{authorization:context.authorization}),error=>!error.message.includes('private')&&error.message.includes('загрузка полей контактов'));
 });
+test('сетевой отказ сообщает этап и безопасную причину, не превращая запись в повтор',async()=>{
+  for (const [failure,expected] of [[Object.assign(new Error('private'),{name:'TimeoutError'}),'TIMEOUT'],[Object.assign(new Error('private'),{cause:{code:'ENOTFOUND',message:'private'}}),'DNS'],[Object.assign(new Error('private'),{cause:{code:'CERT_HAS_EXPIRED'}}),'TLS']]) {
+    const call=createVibeClient({appKey:'vibe_app_test',fetchImpl:async()=>{throw failure;}});
+    await assert.rejects(call('/lists/55/type',{authorization:context.authorization}),error=>error.code==='VIBE_UNAVAILABLE'&&error.message.includes(expected)&&error.message.includes('определение типа инфоблока маршрутов')&&!error.message.includes('private'));
+    await assert.rejects(call('/deals/101',{authorization:context.authorization,method:'PATCH',body:{}}),{code:'CRM_WRITE_UNCERTAIN'});
+  }
+});
 test('сохранение обновляет только согласованные поля контакта и сделки и проверяет чтением',async t=>{
   const f=await setup(t),request=await input(f),result=await f.service.save(request,context);
   assert.equal(result.booking.syncState,'synced');assert.equal(result.booking.masterId,'m1');

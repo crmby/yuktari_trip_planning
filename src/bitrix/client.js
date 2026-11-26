@@ -41,7 +41,10 @@ export function createVibeClient({ appKey, fetchImpl = fetch }) {
         headers: { 'X-Api-Key': appKey, Authorization: authorization, 'Content-Type': 'application/json', 'X-Crm-Api': 'v2' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-    } catch { throw new AppError(502, method === 'GET' ? 'VIBE_UNAVAILABLE' : 'CRM_WRITE_UNCERTAIN', method === 'GET' ? 'VibeCode не ответил. Проверьте соединение и повторите загрузку.' : 'Ответ на запись CRM не получен. Результат нужно перепроверить перед повторным сохранением.'); }
+    } catch (error) {
+      const network = error.name === 'TimeoutError' || error.name === 'AbortError' || error.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ? 'TIMEOUT' : ['ENOTFOUND','EAI_AGAIN'].includes(error.cause?.code) ? 'DNS' : ['CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','DEPTH_ZERO_SELF_SIGNED_CERT','ERR_TLS_CERT_ALTNAME_INVALID'].includes(error.cause?.code) ? 'TLS' : 'NETWORK';
+      throw new AppError(502, method === 'GET' ? 'VIBE_UNAVAILABLE' : 'CRM_WRITE_UNCERTAIN', method === 'GET' ? `Сервер приложения не получил ответ VibeCode. Этап: ${requestLabel(path)}. Причина: ${network}. Повторите загрузку.` : 'Ответ на запись CRM не получен. Результат нужно перепроверить перед повторным сохранением.');
+    }
     let result;
     try { result = await response.json(); } catch { throw new AppError(502, 'VIBE_INVALID_RESPONSE', 'VibeCode вернул неожиданный ответ.'); }
     if (!response.ok || result.success !== true) {

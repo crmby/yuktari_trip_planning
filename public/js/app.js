@@ -1,8 +1,7 @@
 import { FUNNELS, ROUTES, STATUSES, DEMO_DATE, minutes, time, validDate, shiftFor, conflicts, findSlot, createDemoState, migrateDemoState, groupsFor, routesFor, typesFor } from './planner.js';
 
 import { api, runtime } from './bridge.js';
-const runtimeInfo = await runtime();
-const live = runtimeInfo.mode === 'bitrix';
+let runtimeInfo = {mode:'bitrix',loading:true}, live = true, initializing = false;
 const params = new URLSearchParams(location.search);
 let contextId = params.get('dealId');
 try { const context = JSON.parse(params.get('placement_options') || '{}'); contextId ||= String(context.ID || context.id || ''); } catch {}
@@ -12,7 +11,8 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': 
 const money = (value, currency = 'BYN') => new Intl.NumberFormat('ru-BY', { maximumFractionDigits: 2 }).format(value) + ' ' + escape(currency || 'BYN');
 const dateLabel = date => validDate(date) ? new Intl.DateTimeFormat('ru-BY', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`)) : 'Выберите дату';
 const STORAGE_KEY = 'yuktari-trip-planning-demo-v1';
-let state = live ? (runtimeInfo.state || { schema: 2, revision: 0, mode: 'bitrix', routeOptions: [], masters: [], groups: [], bookings: [], deals: [], audit: [] }) : createDemoState(), editingBooking = null, editingMaster = null, editingGroup = null, pendingConfirm = null;
+const emptyState = () => ({ schema:2,revision:0,mode:'bitrix',routeOptions:[],masters:[],groups:[],bookings:[],deals:[],audit:[] });
+let state = emptyState(), editingBooking = null, editingMaster = null, editingGroup = null, pendingConfirm = null;
 let month = DEMO_DATE.slice(0, 7), currentView = 'sheet';
 const form = $('#booking-form');
 const field = name => form.elements.namedItem(name);
@@ -37,9 +37,9 @@ function readStorage() {
     || !saved.bookings.every(b => typeof b.id === 'string' && validDate(b.date) && Number.isFinite(minutes(b.position)) && Object.hasOwn(STATUSES, b.status))) throw new Error('Некорректный формат демо-данных.');
   return saved;
 }
-try { if (!live) state = readStorage() || state; } catch { notify('Не удалось прочитать демо-данные. Новые изменения не будут сохранены до восстановления доступа к хранилищу или сброса демо.', true); }
 
 async function commit(change, message) {
+  if (runtimeInfo.loading || runtimeInfo.error) { notify(runtimeInfo.error || 'Данные ещё загружаются.',true); return false; }
   if (live) return commitLive(change, message);
   let latest;
   try { latest = readStorage(); } catch { notify('Хранилище недоступно или данные повреждены. Сохранение не выполнено. Можно сбросить демо.', true); return false; }
@@ -149,7 +149,7 @@ function renderDealInfo() {
 }
 function updateAvailability() {
   const result = findSlot(draftFromForm(), state, editingBooking);
-  $('#save-booking').disabled = Boolean(result.error) || Boolean(pendingSync) || Boolean(runtimeInfo.error);
+  $('#save-booking').disabled = Boolean(result.error) || Boolean(pendingSync) || Boolean(runtimeInfo.error) || Boolean(runtimeInfo.loading);
   $('#availability-result').innerHTML = result.error
     ? `<h3 class="availability-title error">Проверьте параметры</h3><p class="availability-detail">${escape(result.error)}</p>`
     : `<h3 class="availability-title ok">Есть свободный мастер</h3><p class="availability-detail">Автоматическое назначение<strong>${escape(state.masters.find(m => m.id === result.masterId)?.name)}</strong></p><p class="availability-detail">Предлагаемый резерв<strong>${result.actualStart}–${time(minutes(result.actualStart) + Number(field('duration').value))}</strong></p><p class="availability-detail">Окно клиента<strong>${escape(field('windowStart').value)}–${escape(field('windowEnd').value)}</strong></p><p class="field-help">Доступность будет повторно проверена при сохранении.</p>`;
@@ -256,7 +256,8 @@ function renderAll() { renderSelectors(); renderSheet(); renderMasters(); render
 
 document.addEventListener('click', event => {
   const button = event.target.closest('button'); if (!button) return;
-  if (button.dataset.view) { $('#notice').hidden = true; showView(button.dataset.view); }
+  if (button.dataset.view) { if (!runtimeInfo.error && !runtimeInfo.loading) $('#notice').hidden = true; showView(button.dataset.view); }
+  if ((runtimeInfo.loading || runtimeInfo.error) && !button.dataset.view) return;
   if (button.dataset.new) { if (live && contextId) loadLiveDeal(contextId); else { resetBooking(button.dataset.new); showView('booking'); } }
   if (button.dataset.edit) editBooking(button.dataset.edit);
   if (button.dataset.master) openMaster(button.dataset.master);
@@ -404,7 +405,7 @@ async function loadLiveDeal(id) {
 }
 let calendarGeneration = 0;
 async function loadLiveCalendar(more = false) {
-  if (!live || runtimeInfo.error || pendingSync) return;
+  if (!live || runtimeInfo.loading || runtimeInfo.error || pendingSync) return;
   if (more && calendarLoading) return;
   const generation = ++calendarGeneration, date = $('#sheet-date').value;
   if (!validDate(date)) return;
@@ -492,45 +493,73 @@ $('#bind-placement').addEventListener('click', () => askConfirm('Добавит�
   try { const result = await api('/placement', {}); notify(result.message); } catch (error) { notify(error.message, true); }
 }));
 
-$('#mode-badge').textContent = live ? 'Битрикс24' : 'Тестовая версия';
-$('#reset-demo').hidden = live;
-$('#refresh-calendar').hidden = !live;
-$('#bind-placement').hidden = !live || !runtimeInfo.user?.isAdmin;
-$('#city-filter').closest('label').hidden = true;
-if (live) {
-  $('.demo-strip').textContent = 'Данные Битрикс24. Сохранение обновляет поля контакта и сделки. Услуги загружаются из товарных позиций.';
-  $('.demo-rule').innerHTML = '<summary>Как считается доступность</summary><p>Работа целиком помещается в окно клиента и смену мастера. Шаг планирования — 30 минут, между выездами — 30 минут на дорогу. Итоговый резерв проверяется сервером при сохранении.</p>';
-  $('#reload-deal').hidden = false;
-  $('#view-booking .section-heading .muted').textContent = contextId ? 'Текущая сделка подставлена из вкладки Битрикс24.' : 'Найдите сделку в Битрикс24 и согласуйте время обслуживания.';
-  $('.booking-aside .field-help').textContent = 'После сохранения приложение проверит значения в контакте и сделке. Услуги берутся из товарных позиций.';
-  $('.app-footer span').textContent = `Версия ${runtimeInfo.version || 'не определена'} · Битрикс24`;
-  const now = new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Minsk'}).format(new Date());
-  $('#sheet-date').value = now; $('#exception-date').value = now; month = now.slice(0,7);
-  $('#add-master').disabled = !runtimeInfo.canManage; $('#add-group').disabled = !runtimeInfo.canManage;
+function disableDataControls(disabled) {
+  document.querySelectorAll('form input,form select,form textarea,form button:not([data-view]),#add-master,#add-group,#new-booking,#reload-deal,#refresh-calendar,#reset-demo,#calendar-more,#bind-placement').forEach(el => el.disabled = disabled);
 }
-renderSelectors();
-$('#route-filter').value = routeOptions()[0]?.id || '';
+async function initializeRuntime() {
+  if (initializing) return;
+  initializing = true; runtimeInfo.loading = true;
+  $('#retry-connection').hidden = false; $('#retry-connection').disabled = true; $('#retry-connection').textContent = 'Загрузка данных…';
+  $('#mode-badge').textContent = 'Загрузка данных'; disableDataControls(true);
+  notify('Загружаем данные Битрикс24. Разделы приложения доступны; формы откроются после загрузки.');
+  try {
+    runtimeInfo = {...await runtime(),loading:false}; live = runtimeInfo.mode === 'bitrix';
+    state = live ? runtimeInfo.state || emptyState() : createDemoState();
+    let storageError = '';
+    if (!live) { try { state = readStorage() || state; } catch { storageError = 'Не удалось прочитать демо-данные. Проверьте хранилище браузера.'; } }
+    calendarGeneration++; calendarCursor = null; calendarLoading = false; dealResults = []; editingBooking = null;
+    disableDataControls(false);
+    $('#mode-badge').textContent = runtimeInfo.error ? 'Данные недоступны' : live ? 'Битрикс24' : 'Тестовая версия';
+    $('#reset-demo').hidden = live;
+    $('#refresh-calendar').hidden = !live;
+    $('#bind-placement').hidden = !live || !runtimeInfo.user?.isAdmin;
+    $('#city-filter').closest('label').hidden = true;
+    if (live) {
+      $('.demo-strip').textContent = 'Данные Битрикс24. Сохранение обновляет поля контакта и сделки. Услуги загружаются из товарных позиций.';
+      $('.demo-rule').innerHTML = '<summary>Как считается доступность</summary><p>Работа целиком помещается в окно клиента и смену мастера. Шаг планирования — 30 минут, между выездами — 30 минут на дорогу. Итоговый резерв проверяется сервером при сохранении.</p>';
+      $('#reload-deal').hidden = false;
+      $('#view-booking .section-heading .muted').textContent = contextId ? 'Текущая сделка подставлена из вкладки Битрикс24.' : 'Найдите сделку в Битрикс24 и согласуйте время обслуживания.';
+      $('.booking-aside .field-help').textContent = 'После сохранения приложение проверит значения в контакте и сделке. Услуги берутся из товарных позиций.';
+      $('.app-footer span').textContent = `Версия ${runtimeInfo.version || 'не определена'} · Битрикс24`;
+      const now = new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Minsk'}).format(new Date());
+      $('#sheet-date').value = now; $('#exception-date').value = now; month = now.slice(0,7);
+      $('#add-master').disabled = !runtimeInfo.canManage; $('#add-group').disabled = !runtimeInfo.canManage;
+    }
+    renderSelectors();
+    $('#route-filter').value = routeOptions()[0]?.id || '';
+    renderAll(); resetBooking();
+    if (!runtimeInfo.error && contextId && live) {
+      $('#deal-search').hidden = true; $('#booking-deal').disabled = true;
+      await loadLiveDeal(contextId);
+    } else if (!runtimeInfo.error && contextId && !live && state.deals.some(d => d.id === contextId)) {
+      const booking = state.bookings.find(b => b.dealId === contextId);
+      if (booking) editBooking(booking.id); else { resetBooking('09:00',contextId); showView('booking'); }
+    } else if (!runtimeInfo.error && live) await loadLiveCalendar();
+    const unfinished = runtimeInfo.pendingOperations?.find(op => !contextId || op.dealId === contextId);
+    if (live && unfinished) {
+      const operation = unfinished;
+      await loadLiveDeal(operation.dealId);
+      try { const saved = await api('/bookings/pending/' + operation.operationId); fillBooking(saved.draft); }
+      catch (error) { notify(error.message, true); }
+      pendingSync = operation; $('#recheck-save').hidden = false; showView('booking');
+      notify('Есть незавершённая синхронизация. Проверьте результат предыдущего сохранения.', true); updateAvailability();
+    }
+    if (runtimeInfo.error) {
+      disableDataControls(true);
+      notify(runtimeInfo.error + ' Нажмите «Повторить загрузку». Разделы доступны, сохранение отключено до восстановления данных.', true);
+    } else if (storageError) notify(storageError,true);
+    else if ($('#notice').textContent.startsWith('Загружаем данные')) $('#notice').hidden = true;
+  } catch {
+    runtimeInfo = {...runtimeInfo,loading:false,error:'Не удалось запустить интерфейс. Повторите загрузку данных.'};
+    disableDataControls(true); notify(runtimeInfo.error,true);
+  } finally {
+    initializing = false; runtimeInfo.loading = false;
+    $('#retry-connection').hidden = !runtimeInfo.error; $('#retry-connection').disabled = false; $('#retry-connection').textContent = 'Повторить загрузку';
+  }
+}
+$('#retry-connection').addEventListener('click', () => initializeRuntime());
 renderAll(); resetBooking();
-if (contextId && live) {
-  $('#deal-search').hidden = true; $('#booking-deal').disabled = true;
-  await loadLiveDeal(contextId);
-} else if (contextId && !live && state.deals.some(d => d.id === contextId)) {
-  const booking = state.bookings.find(b => b.dealId === contextId);
-  if (booking) editBooking(booking.id); else { resetBooking('09:00',contextId); showView('booking'); }
-} else if (live) await loadLiveCalendar();
-const unfinished = runtimeInfo.pendingOperations?.find(op => !contextId || op.dealId === contextId);
-if (live && unfinished) {
-  const operation = unfinished;
-  await loadLiveDeal(operation.dealId);
-  try { const saved = await api('/bookings/pending/' + operation.operationId); fillBooking(saved.draft); }
-  catch (error) { notify(error.message, true); }
-  pendingSync = operation; $('#recheck-save').hidden = false; showView('booking');
-  notify('Есть незавершённая синхронизация. Проверьте результат предыдущего сохранения.', true); updateAvailability();
-}
-if (runtimeInfo.error) {
-  document.querySelectorAll('form input,form select,form button,#add-master,#add-group,#new-booking').forEach(el => el.disabled = true);
-  notify(runtimeInfo.error, true);
-}
+void initializeRuntime();
 setInterval(() => { if (live && currentView === 'sheet' && !calendarLoading && !document.querySelector('dialog[open]') && !document.activeElement?.matches('input,select,textarea')) loadLiveCalendar(); }, 60000);
 // Active forms also need Gateway requests; calendar refresh only covers the sheet.
 let lastActivity = Date.now();

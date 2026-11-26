@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { AppError, requireId } from './errors.js';
 import { findSlot, validateDraft, minutes, time, validDate } from '../../public/js/planner.js';
+import { PLANNING_FUNNEL_IDS } from './fields.js';
 
 const properties = ['address', 'apartment', 'route', 'date', 'windowStart', 'windowEnd', 'duration', 'comment', 'years'];
 function cleanDraft(input) {
@@ -14,17 +15,23 @@ function matches(deal, draft) {
   return properties.every(key => key === 'duration' ? Number(deal[key]) === Number(draft[key]) : key === 'years' && draft[key] !== '' && Number.isFinite(Number(draft[key])) ? Number(deal[key]) === Number(draft[key]) : String(deal[key] ?? '') === String(draft[key] ?? ''));
 }
 function recordFromDeal(deal, old) {
-  if (!deal.date && old?.status !== 'cancelled') return null;
+  if (!deal.date && old?.status !== 'cancelled' && old?.syncState !== 'pending') return null;
   const from = minutes(deal.windowStart);
+  const values = old?.syncState === 'pending' ? {...deal,...old} : deal;
   return {
-    id: old?.id || `crm-${deal.id}`, dealId: deal.id, date: deal.date || old?.date,
-    address: deal.address, apartment: deal.apartment, route: deal.route, years: deal.years,
-    windowStart: deal.windowStart, windowEnd: deal.windowEnd, duration: deal.duration, comment: deal.comment,
+    id: old?.id || `crm-${deal.id}`, dealId: deal.id, date: values.date || old?.date,
+    address: values.address, apartment: values.apartment, route: values.route, years: values.years,
+    windowStart: values.windowStart, windowEnd: values.windowEnd, duration: values.duration, comment: values.comment,
     position: old?.position || (Number.isFinite(from) ? time(Math.max(540, Math.min(1050, Math.floor(from / 30) * 30))) : '09:00'),
     actualStart: old?.actualStart || deal.windowStart || '09:00', masterId: old?.masterId || '',
     status: old?.status === 'cancelled' ? 'cancelled' : deal.completion === 'Выполнен' ? 'done' : 'planned',
     syncState: old?.syncState || 'synced', special: false, city: '', region: '', district: '', lat: '', lon: '',
   };
+}
+function visibleRecord(deal,saved){
+  const old=saved.bookings.find(b=>b.dealId===deal.id);
+  const changedContact=old?.syncState==='pending' && saved.operations.some(op=>op.dealId===deal.id && op.status!=='done' && op.contactId!==deal.contactId);
+  return recordFromDeal(deal,changedContact ? {...old,syncState:'blocked'} : old);
 }
 export function createPlanningService({ crm, store, managerIds = [], appUrl }) {
   const canManage = context => context.isAdmin || managerIds.includes(context.id);
@@ -38,13 +45,28 @@ export function createPlanningService({ crm, store, managerIds = [], appUrl }) {
       state: { schema: 2, revision: saved.revision, mode: 'bitrix', funnelOptions:meta.funnels, routeOptions: meta.routes, masters: saved.masters, groups: saved.groups, bookings: [], deals: [], audit: [] } };
   }
   async function deal(id, context) {
-    const item = await crm.getDeal(id, context), saved = await store.read();
-    return { deal: item, booking: recordFromDeal(item, saved.bookings.find(b => b.dealId === item.id)) };
+    const item = await crm.getDeal(id, context);let saved = await store.read();
+    const operations = saved.operations.filter(op=>op.dealId===item.id && op.userId===context.id && op.status!=='done');
+    const confirmed=operations.filter(op=>item.contactId===op.contactId && matches(item,op.draft));
+    if(confirmed.length)saved=await store.transaction(async(state,persist)=>{
+      for(const old of confirmed){const op=state.operations.find(o=>o.id===old.id);if(op)op.status='done';const b=state.bookings.find(b=>b.dealId===item.id);if(b){b.syncState='synced';if(old.cancel)b.status='cancelled';}}
+      await persist(state);return state;
+    });
+    const pending=saved.operations.find(op=>op.dealId===item.id && op.userId===context.id && op.status!=='done');
+    return { deal:item,booking:visibleRecord(item,saved),revision:saved.revision,
+      confirmedOperationIds:saved.operations.filter(op=>op.dealId===item.id && op.userId===context.id && op.status==='done').map(op=>op.id),
+      pendingOperation:pending ? {operationId:pending.id,dealId:pending.dealId,cancel:pending.cancel} : null };
   }
   async function calendar(date, cursor, context) {
     if (!validDate(date) || (cursor && !/^\d{1,2}:[1-9]?\d{0,14}$/.test(cursor))) throw new AppError(400, 'INVALID_CALENDAR_QUERY', 'Некорректная дата или страница календаря.');
     const page = await crm.calendar(date, cursor, context), saved = await store.read();
-    return { ...page, bookings: page.deals.map(d => recordFromDeal(d, saved.bookings.find(b => b.dealId === d.id))).filter(Boolean), revision: saved.revision };
+    // A durable reservation must also be visible when its UF date was not yet
+    // confirmed by CRM. Recheck access before exposing any stored trip.
+    if(!cursor)for(const booking of saved.bookings.filter(b=>b.date===date && b.syncState==='pending' && !page.deals.some(d=>d.id===b.dealId))){
+      try{const current=await crm.getDeal(booking.dealId,context);if(PLANNING_FUNNEL_IDS.includes(current.funnel) && (current.date===date || booking.syncState==='pending'))page.deals.push(current);}
+      catch(error){if(![403,404].includes(error.status))throw error;}
+    }
+    return { ...page, bookings: page.deals.map(d => visibleRecord(d,saved)).filter(Boolean), revision: saved.revision };
   }
   async function save(input, context) {
     const operationId = String(input?.operationId || '');
@@ -77,7 +99,7 @@ export function createPlanningService({ crm, store, managerIds = [], appUrl }) {
       state.operations.push(operation); state.operations = state.operations.filter(op => op.status !== 'done').concat(state.operations.filter(op => op.status === 'done').slice(-100));
       await persist(state); // Reserve durably before any CRM write; unresolved writes keep the reservation.
       try {
-        const fields = crm.writeFields(writeDraft, meta);
+        const fields = crm.writeFields({...writeDraft,address:writeDraft.address===current.address ? current.addressValue || current.address : writeDraft.address}, meta);
         if (cancelling) { fields.contact = {}; fields.deal = Object.fromEntries(['date', 'windowStart', 'windowEnd'].map(key => [meta.deal[key].key, fields.deal[meta.deal[key].key]])); }
         // Only supplied UF fields are patched: no stages, products or Wialon calls.
         await crm.write(draft.dealId, current.contactId, fields, context);
@@ -88,7 +110,7 @@ export function createPlanningService({ crm, store, managerIds = [], appUrl }) {
         await persist(state); return { deal: actual, booking: recordFromDeal(actual, booking), revision: state.revision };
       } catch (error) {
         operation.status = 'uncertain'; await persist(state);
-        throw new AppError(502, 'CRM_SYNC_UNCERTAIN', 'Синхронизация не подтверждена полностью. Резерв сохранён. Нажмите «Проверить результат»; не создавайте дубликат выезда.');
+        throw new AppError(502, 'CRM_SYNC_UNCERTAIN', 'Подтверждение сохранения задерживается. Выезд зарезервирован; приложение автоматически проверит результат.');
       }
     });
   }
@@ -151,7 +173,8 @@ export function createPlanningService({ crm, store, managerIds = [], appUrl }) {
   async function pending(id, context) {
     const saved = await store.read(), operation = saved.operations.find(op => op.id === id && op.userId === context.id && op.status !== 'done');
     if (!operation) throw new AppError(404, 'OPERATION_NOT_FOUND', 'Незавершённая операция не найдена.');
-    await crm.getDeal(operation.dealId, context); // Recheck current CRM access before returning the private draft.
+    const current=await crm.getDeal(operation.dealId, context); // Recheck current CRM access before returning the private draft.
+    if(current.contactId!==operation.contactId)throw new AppError(409,'CRM_CHANGED','Контакт сделки изменён. Загрузите актуальные данные.');
     return { draft:operation.draft, cancel:operation.cancel };
   }
   return { bootstrap, deal, calendar, save, reconcile, pending, settings, placement, canManage };

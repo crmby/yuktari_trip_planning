@@ -41,7 +41,7 @@ export function validateDraft(draft, state) {
   if (!validDate(draft.date)) return 'Укажите корректную дату.';
   if (!(state.routeOptions ? state.routeOptions.map(r => r.id) : ROUTES).includes(draft.route)) return 'Выберите маршрут.';
   if (!draft.address?.trim()) return 'Укажите адрес обслуживания.';
-  if (![30, 60, 120].includes(draft.duration)) return 'Выберите длительность: 30, 60 или 120 минут.';
+  if (!Number.isInteger(draft.duration) || draft.duration < 1 || draft.duration > 1440) return 'Укажите длительность от 1 до 1440 минут.';
   const from = minutes(draft.windowStart), to = minutes(draft.windowEnd);
   if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) return 'Окончание окна приезда должно быть позже начала.';
   if (to - from < draft.duration) return 'В тестовой модели работа должна целиком помещаться в окно приезда.';

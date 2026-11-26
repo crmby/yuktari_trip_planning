@@ -92,14 +92,17 @@ export function createCrm(call, { routeIblockId = '', referenceStore } = {}) {
     const value = { ...mapping, routes, funnels, iblockId, iblockType };
     return value;
   }); }
-  async function getRaw(id, context, meta) {
-    const deal = (await api(`/deals/${requireId(id, 'сделки')}`, context)).data;
+  async function getRaw(id, context, meta, providedDeal, contactsCache) {
+    const deal = providedDeal || (await api(`/deals/${requireId(id, 'сделки')}`, context)).data;
     const categoryId = String(deal.categoryId ?? 0);
     const funnel = meta.funnels.find(f => f.id === categoryId) || {id:categoryId,name:`Воронка №${categoryId}`};
     const contacts = asArray(deal.contactIds).filter(Boolean);
     const contactId = deal.contactId || (contacts.length === 1 ? contacts[0] : null);
     if (!contactId) throw new AppError(409, 'PRIMARY_CONTACT_REQUIRED', 'Укажите основной контакт в карточке сделки. Адрес, квартира и маршрут берутся из него.');
-    const [contact, products] = await Promise.all([api(`/contacts/${requireId(contactId, 'контакта')}`, context), api(`/deals/${requireId(id)}/products`, context)]);
+    const contactPath=`/contacts/${requireId(contactId,'контакта')}`;
+    let contactRequest=contactsCache?.get(contactPath);
+    if(!contactRequest){contactRequest=api(contactPath,context);contactsCache?.set(contactPath,contactRequest);}
+    const [contact, products] = await Promise.all([contactRequest, api(`/deals/${requireId(id)}/products`, context)]);
     return { deal, contact: contact.data, products: asArray(products.data), funnel };
   }
   function normalize(raw, meta, context) {
@@ -111,7 +114,7 @@ export function createCrm(call, { routeIblockId = '', referenceStore } = {}) {
       id: requireId(deal.id), title: scalar(deal.title), contactId: requireId(contact.id), funnel: funnel.id, funnelName: funnel.name,
       type: Number(deal.companyId) > 0 ? 'company' : 'individual',
       client: [contact.lastName, contact.name, contact.secondName].filter(Boolean).join(' ') || scalar(deal.title),
-      phone: scalar(contact.phone), address: scalar(c('address')), apartment: scalar(c('apartment')), route: routeId,
+      phone: scalar(contact.phone), address: scalar(c('address')).split('|')[0].trim(), addressValue:scalar(c('address')), apartment: scalar(c('apartment')), route: routeId,
       date: crmDate(d('date')), windowStart: crmTime(d('windowStart')), windowEnd: crmTime(d('windowEnd')),
       duration: Number(d('duration')) || 30, comment: scalar(d('comment')), years: scalar(d('years')),
       products: products.map(p => ({ name: scalar(p.productName), price: Number(p.price) || 0, quantity: Number(p.quantity) || 1, currency: scalar(deal.currency) })),
@@ -146,20 +149,26 @@ export function createCrm(call, { routeIblockId = '', referenceStore } = {}) {
     let next = null;
     const after = cursor?.split(':')[1] || '';
     const key = meta.deal.date.key, dateTime = meta.deal.date.type === 'datetime';
-    const query = new URLSearchParams({ limit: '5', 'order[id]': 'asc', select: 'id', withTotal:'false' });
+    const query = new URLSearchParams({ limit: '20', 'order[id]': 'asc', select:['id','title','categoryId','contactId','companyId','currency','stageSemanticId',...Object.values(meta.deal).map(f=>f.key)].join(','), withTotal:'false' });
     PLANNING_FUNNEL_IDS.forEach((id,i)=>query.set('filter[categoryId][$in]['+i+']',id));
     if (dateTime) { query.set(`filter[>=${key}]`, `${date}T00:00:00+03:00`); query.set(`filter[<=${key}]`, `${date}T23:59:59+03:00`); }
     else query.set(`filter[${key}]`, date);
     if (after) query.set('filter[>id]', requireId(after));
     const page = await api('/deals?' + query, context);
     if (page.meta?.pageErrorSample || page.meta?.warnings?.some(w => /TRUNCATED|PARTIAL/.test(w.code))) throw new AppError(502, 'CALENDAR_PARTIAL', 'Битрикс24 вернул неполную страницу выездов. Повторите загрузку.');
-    for (let offset = 0; offset < asArray(page.data).length; offset += 3) result.push(...await Promise.all(page.data.slice(offset, offset + 3).map(deal => getDeal(deal.id, context))));
+    const contactsCache=new Map();let unavailable=0;
+    for (let offset = 0; offset < asArray(page.data).length; offset += 4) {
+      const rows=await Promise.all(page.data.slice(offset,offset+4).map(async deal=>{
+        try{return normalize(await getRaw(deal.id,context,meta,Object.hasOwn(deal,meta.deal.date.key)?deal:undefined,contactsCache),meta,context);}
+        catch(error){if([403,404,409].includes(error.status)){unavailable++;return null;}throw error;}
+      }));result.push(...rows.filter(Boolean));
+    }
     if (page.meta?.hasMore) {
       const last = scalar(page.meta.nextAfterId || page.data.at(-1)?.id);
       if (!last || last === after) throw new AppError(502, 'CALENDAR_CURSOR_FAILED', 'Ошибка продолжения списка сделок.');
       next = `0:${last}`;
     }
-    return { deals: result, next };
+    return { deals: result, next, unavailable };
   }
   async function employeeDirectory(context,{refresh=false}={}) { return cached(context,'employees',refresh,async()=>{
     const people=[];

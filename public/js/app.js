@@ -1,6 +1,7 @@
 import { FUNNELS, ROUTES, STATUSES, DEMO_DATE, minutes, time, validDate, shiftFor, conflicts, findSlot, createDemoState, migrateDemoState, groupsFor, routesFor, typesFor } from './planner.js';
 
 import { api, runtime } from './bridge.js';
+import { createPicker } from './picker.js';
 let runtimeInfo = {mode:'bitrix',loading:true}, live = true, initializing = false;
 const params = new URLSearchParams(location.search);
 let contextId = params.get('dealId');
@@ -80,7 +81,7 @@ function showView(name) {
   document.querySelectorAll('.main-nav button').forEach(button => {
     if (button.dataset.view === name) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
-  if (name === 'sheet') renderSheet();
+  if (name === 'sheet') { renderSheet(); if(live && !runtimeInfo.loading && !runtimeInfo.error && !calendarLoading)void loadLiveCalendar(); }
   if (name === 'booking') updateAvailability();
   if (name === 'masters') renderMasters();
   if (name === 'schedule') renderSchedule();
@@ -107,7 +108,7 @@ function bookingRow(b, index) {
   const errors = conflicts(b, state);
   return `<tr class="${b.special ? 'row-special ' : ''}${errors.length ? 'row-conflict ' : ''}${b.status === 'cancelled' ? 'row-cancelled' : ''}">
     <td class="slot-cell">${escape(b.position)}<span class="slot-index">№ ${index}</span></td><td>${escape(b.years || '—')}</td>
-    <td><span class="cell-title">${escape(deal.client)}</span>${escape(b.city || deal.city)}<span class="cell-detail">${escape(routeLabel(b.route))}</span><button class="text-link cell-detail" type="button" data-edit="${escape(b.id)}">${live ? 'Сделка' : 'Демо-сделка'} №${escape(deal.id)}</button><span class="cell-detail">${escape(funnelLabel(deal))}</span></td>
+    <td><span class="cell-title">${escape(deal.client)}</span>${escape(b.city || deal.city)}<span class="cell-detail">${escape(routeLabel(b.route))}</span>${live ? `<a class="text-link cell-detail" href="${escape(deal.url)}" target="_blank" rel="noopener noreferrer">Сделка №${escape(deal.id)}</a>` : `<button class="text-link cell-detail" type="button" data-edit="${escape(b.id)}">Демо-сделка №${escape(deal.id)}</button>`}<span class="cell-detail">${escape(funnelLabel(deal))}</span></td>
     <td>${escape(b.address)}${b.apartment ? `<span class="cell-detail">Кв. / офис ${escape(b.apartment)}</span>` : ''}</td><td>${escape(deal.phone || '—')}</td>
     <td>${deal.products.map(p => `<div class="cell-product">${escape(p.name)}<span class="cell-detail">${escape(p.quantity ?? 1)} × ${money(p.price, p.currency)}</span></div>`).join('')}<span class="cell-detail">Работа: ${b.duration} мин.</span></td>
     <td><span class="cell-window">${escape(b.windowStart)}–${escape(b.windowEnd)}</span><div class="cell-comment">${escape(b.comment || 'Без дополнительных пожеланий')}</div><span class="cell-detail">Резерв мастера: ${escape(b.actualStart)}–${time(minutes(b.actualStart) + b.duration)}</span></td>
@@ -147,13 +148,17 @@ function draftFromForm() {
 }
 function renderDealInfo() {
   const deal = state.deals.find(d => d.id === field('dealId').value);
+  const addressLink=$('#contact-address-link');addressLink.hidden=!live || !deal;
+  if(live && deal)addressLink.href='https://'+runtimeInfo.portal+'/crm/contact/details/'+deal.contactId+'/';
+  field('address').readOnly=live;
   $('#deal-info').innerHTML = deal ? `<p><strong>${escape(deal.client)}</strong> · ${escape(deal.phone || '')}</p><p class="muted">${escape(funnelLabel(deal))}</p><ul class="product-list">${deal.products.map(p => `<li><span>${escape(p.name)} × ${escape(p.quantity ?? 1)}</span><span>${money(p.price, p.currency)}</span></li>`).join('')}</ul>` : '';
 }
 function updateAvailability() {
   const result = findSlot(draftFromForm(), state, editingBooking);
-  $('#save-booking').disabled = Boolean(result.error) || Boolean(pendingSync) || Boolean(runtimeInfo.error) || Boolean(runtimeInfo.loading);
-  $('#availability-result').innerHTML = result.error
-    ? `<h3 class="availability-title error">Проверьте параметры</h3><p class="availability-detail">${escape(result.error)}</p>`
+  $('#save-booking').disabled = Boolean(result.error) || Boolean(pendingSync && pendingSync.dealId===field('dealId').value) || Boolean(runtimeInfo.error) || Boolean(runtimeInfo.loading);
+  $('#availability-result').innerHTML = pendingSync?.dealId===field('dealId').value
+    ? '<p class="availability-detail">Проверяем подтверждение сохранения…</p>' : result.error
+    ? `<p class="availability-detail">${escape(pendingSync?.dealId===field('dealId').value ? 'Проверяем подтверждение сохранения…' : result.error)}</p>`
     : `<h3 class="availability-title ok">Есть свободный мастер</h3><p class="availability-detail">Автоматическое назначение<strong>${escape(state.masters.find(m => m.id === result.masterId)?.name)}</strong></p><p class="availability-detail">Предлагаемый резерв<strong>${result.actualStart}–${time(minutes(result.actualStart) + Number(field('duration').value))}</strong></p><p class="availability-detail">Окно клиента<strong>${escape(field('windowStart').value)}–${escape(field('windowEnd').value)}</strong></p><p class="field-help">Доступность будет повторно проверена при сохранении.</p>`;
 }
 function fillBooking(values) {
@@ -162,6 +167,7 @@ function fillBooking(values) {
     const control = field(name);
     if (control) { if (control.type === 'checkbox') control.checked = Boolean(value); else control.value = value; }
   }
+  if(live && values.dealId){const d=state.deals.find(d=>d.id===values.dealId);$('#deal-search').value=d ? '№'+d.id+' · '+(d.title||d.client) : '';}
   renderDealInfo(); updateAvailability();
 }
 function resetBooking(position = '09:00', preferredDeal) {
@@ -197,7 +203,8 @@ function openMaster(id = null) {
   $('#employee-search').value = '';
   masterForm.elements.namedItem('wialon').value = master?.wialon || '';
   $('#master-employee').disabled = Boolean(master);
-  $('#employee-search').hidden = Boolean(master);
+  $('#employee-search').readOnly = Boolean(master);
+  $('#employee-search').value = master?.name || '';
   $('#master-directions').innerHTML = routeOptions().map(route => `<label class="check"><input name="directions" type="checkbox" value="${escape(route.id)}" ${master?.directions?.includes(route.id) ? 'checked' : ''}>${escape(route.label)}</label>`).join('');
   employeeResults = master ? [{id: master.bitrixUserId || String(501 + state.masters.indexOf(master)),name: master.name}] : [];
   renderEmployees(master?.bitrixUserId || employeeResults[0]?.id || '');
@@ -390,10 +397,11 @@ function mergeDeal(result) {
   if (result.revision !== undefined) state.revision = result.revision;
 }
 async function loadLiveDeal(id) {
-  if (!id || pendingSync) return;
+  if (!id) return;
   try {
     if (contextId && id !== contextId) { notify('Вкладка открыта из другой сделки. Для поиска используйте отдельное приложение.', true); return; }
     const result = await api(`/deals/${encodeURIComponent(id)}`);
+    pendingSync=result.pendingOperation || null;
     mergeDeal(result); renderSelectors(id);
     const deal = result.deal, booking = result.booking;
     editingBooking = booking?.status !== 'cancelled' ? booking?.id || null : null;
@@ -408,7 +416,7 @@ async function loadLiveDeal(id) {
 }
 let calendarGeneration = 0;
 async function loadLiveCalendar(more = false) {
-  if (!live || runtimeInfo.loading || runtimeInfo.error || pendingSync) return;
+  if (!live || runtimeInfo.loading || runtimeInfo.error) return;
   if (more && calendarLoading) return;
   const generation = ++calendarGeneration, date = $('#sheet-date').value;
   if (!validDate(date)) return;
@@ -432,18 +440,18 @@ async function loadLiveCalendar(more = false) {
   finally { if (generation === calendarGeneration) { calendarLoading = false; $('#refresh-calendar').disabled = false; } }
 }
 async function commitLive(change) {
-  if (pendingSync) { notify('Сначала проверьте результат предыдущего сохранения.', true); return false; }
   try {
     const next = structuredClone(state); change(next);
     const changed = next.bookings.find(b => JSON.stringify(b) !== JSON.stringify(state.bookings.find(old => old.id === b.id)));
     if (changed) {
+      if(pendingSync?.dealId===changed.dealId){notify('Подтверждение сохранения ещё проверяется.');return false;}
       const deal = state.deals.find(d => d.id === changed.dealId);
       if (!deal?.revision) throw new Error('Загрузите актуальную сделку перед сохранением.');
-      pendingSync = { operationId: crypto.randomUUID(), expectedRevision: deal.revision, draft: changed, cancel: changed.status === 'cancelled' };
+      pendingSync = { dealId:changed.dealId, operationId: crypto.randomUUID(), expectedRevision: deal.revision, draft: changed, cancel: changed.status === 'cancelled' };
       updateAvailability();
       const result = await api('/bookings', pendingSync);
-      mergeDeal(result); pendingSync = null; $('#recheck-save').hidden = true;
-      renderAll(); notify('Выезд сохранён. Значения в контакте и сделке проверены.');
+      mergeDeal(result); pendingSync = null;
+      renderAll(); notify('Выезд сохранён.');tripUpdates?.postMessage('changed');
     } else {
       const result = await api('/settings', { revision: state.revision, masters: next.masters, groups: next.groups });
       Object.assign(state, result); renderAll(); notify('Настройки сохранены на сервере приложения.');
@@ -451,7 +459,6 @@ async function commitLive(change) {
     return true;
   } catch (error) {
     if (!['CRM_SYNC_UNCERTAIN', 'APP_UNAVAILABLE'].includes(error.code) && !(error.status >= 500)) pendingSync = null;
-    $('#recheck-save').hidden = !pendingSync;
     updateAvailability(); notify(error.message, true); return false;
   }
 }
@@ -459,6 +466,7 @@ function renderEmployees(selected = '') {
   const existing = state.masters.filter(m => m.id !== editingMaster).map(m => m.bitrixUserId || String(501 + state.masters.indexOf(m)));
   options($('#master-employee'), employeeResults.filter(p => !existing.includes(p.id)).map(p => ({value:p.id,label:p.name})), 'Выберите сотрудника');
   if (selected) $('#master-employee').value = selected;
+  if($('#master-employee').value){$('#employee-search').value=$('#master-employee').selectedOptions[0]?.textContent || '';$('#master-form').elements.namedItem('name').value=$('#employee-search').value;}
 }
 let employeeDirectory = null, employeeRequest = null, employeeGeneration = 0;
 async function loadEmployees(query) {
@@ -484,6 +492,7 @@ async function loadEmployees(query) {
   }
 }
 let employeeTimer, dealTimer, dealSearchGeneration = 0;
+$('#master-employee').addEventListener('change',()=>{$('#master-form').elements.namedItem('name').value=$('#master-employee').selectedOptions[0]?.textContent || '';});
 $('#employee-search').addEventListener('input',event=>{clearTimeout(employeeTimer);employeeTimer=setTimeout(()=>loadEmployees(event.target.value),250);});
 let dealLookup = Promise.resolve();
 function loadDealChoices(query) {
@@ -525,18 +534,9 @@ $('#refresh-calendar').addEventListener('click', () => loadLiveCalendar());
 $('#calendar-more').addEventListener('click', () => loadLiveCalendar(true));
 $('#sheet-date').addEventListener('change', () => { if (live) loadLiveCalendar(); });
 $('#reload-deal').addEventListener('click', () => { if (live) loadLiveDeal(field('dealId').value); else resetBooking('09:00',field('dealId').value); });
-$('#recheck-save').addEventListener('click', async () => {
-  if (!pendingSync) return;
-  try { const result = await api('/bookings/reconcile', {operationId:pendingSync.operationId}); mergeDeal(result); pendingSync = null; $('#recheck-save').hidden = true; renderAll(); notify('Сохранение в CRM подтверждено.'); }
-  catch (error) { if (error.code === 'OPERATION_NOT_FOUND') { pendingSync = null; $('#recheck-save').hidden = true; } notify(error.message, true); }
-  updateAvailability();
-});
-$('#bind-placement').addEventListener('click', () => askConfirm('Добавить вкладку «Планирование выездов» в сделки Битрикс24?', async () => {
-  try { const result = await api('/placement', {}); notify(result.message); } catch (error) { notify(error.message, true); }
-}));
 
 function disableDataControls(disabled) {
-  document.querySelectorAll('form input,form select,form textarea,form button:not([data-view]),#add-master,#add-group,#new-booking,#reload-deal,#refresh-calendar,#reset-demo,#calendar-more,#bind-placement,#refresh-references').forEach(el => el.disabled = disabled);
+  document.querySelectorAll('form input,form select,form textarea,form button:not([data-view]),#add-master,#add-group,#new-booking,#reload-deal,#refresh-calendar,#reset-demo,#calendar-more,#refresh-references').forEach(el => el.disabled = disabled);
 }
 async function initializeRuntime() {
   if (initializing) return;
@@ -554,38 +554,27 @@ async function initializeRuntime() {
     $('#mode-badge').textContent = runtimeInfo.error ? 'Данные недоступны' : live ? 'Битрикс24' : 'Тестовая версия';
     $('#reset-demo').hidden = live;
     $('#refresh-references').hidden = !live;
-    $('#refresh-calendar').hidden = !live;
-    $('#bind-placement').hidden = !live || !runtimeInfo.user?.isAdmin;
+    $('#refresh-calendar').hidden = true;
     $('#city-filter').closest('label').hidden = true;
     if (live) {
       $('.demo-rule').innerHTML = '<summary>Как считается доступность</summary><p>Работа целиком помещается в окно клиента и смену мастера. Шаг планирования — 30 минут, между выездами — 30 минут на дорогу. Итоговый резерв проверяется сервером при сохранении.</p>';
       $('#reload-deal').hidden = false;
       $('#view-booking .section-heading .muted').hidden = true;
-      $('.booking-aside .field-help').textContent = 'После сохранения приложение проверит значения в контакте и сделке. Услуги берутся из товарных позиций.';
       $('.app-footer span').textContent = `Версия ${runtimeInfo.version || 'не определена'} · Битрикс24`;
       const now = new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Minsk'}).format(new Date());
       $('#sheet-date').value = now; $('#exception-date').value = now; month = now.slice(0,7);
       $('#add-master').disabled = !runtimeInfo.canManage; $('#add-group').disabled = !runtimeInfo.canManage;
     }
     renderSelectors();
-    $('#route-filter').value = routeOptions()[0]?.id || '';
+    $('#route-filter').value = '';
     renderAll(); resetBooking();
     if (!runtimeInfo.error && contextId && live) {
-      $('#deal-search').hidden = true; $('#booking-deal').disabled = true;
+      $('#deal-search').readOnly = true; $('#booking-deal').disabled = true;
       await loadLiveDeal(contextId);
     } else if (!runtimeInfo.error && contextId && !live && state.deals.some(d => d.id === contextId)) {
       const booking = state.bookings.find(b => b.dealId === contextId);
       if (booking) editBooking(booking.id); else { resetBooking('09:00',contextId); showView('booking'); }
     } else if (!runtimeInfo.error && live) { void loadDealChoices(''); await loadLiveCalendar(); }
-    const unfinished = runtimeInfo.pendingOperations?.find(op => !contextId || op.dealId === contextId);
-    if (live && unfinished) {
-      const operation = unfinished;
-      await loadLiveDeal(operation.dealId);
-      try { const saved = await api('/bookings/pending/' + operation.operationId); fillBooking(saved.draft); }
-      catch (error) { notify(error.message, true); }
-      pendingSync = operation; $('#recheck-save').hidden = false; showView('booking');
-      notify('Есть незавершённая синхронизация. Проверьте результат предыдущего сохранения.', true); updateAvailability();
-    }
     if (runtimeInfo.error) {
       disableDataControls(true);
       notify(runtimeInfo.error + ' Нажмите «Повторить загрузку». Разделы доступны, сохранение отключено до восстановления данных.', true);
@@ -601,12 +590,32 @@ async function initializeRuntime() {
   }
 }
 $('#retry-connection').addEventListener('click', () => initializeRuntime());
+createPicker($('#deal-search'),$('#booking-deal'));
+createPicker($('#employee-search'),$('#master-employee'));
 renderAll(); resetBooking();
 void initializeRuntime();
-setInterval(() => { if (live && currentView === 'sheet' && !calendarLoading && !document.querySelector('dialog[open]') && !document.activeElement?.matches('input,select,textarea')) loadLiveCalendar(); }, 60000);
+setInterval(() => { if (live && currentView === 'sheet' && document.visibilityState==='visible' && !calendarLoading && !document.querySelector('dialog[open]')) loadLiveCalendar(); }, 15000);
 // Active forms also need Gateway requests; calendar refresh only covers the sheet.
 let lastActivity = Date.now();
 for (const event of ['pointerdown','keydown','input']) document.addEventListener(event, () => { lastActivity = Date.now(); }, {passive:true});
 setInterval(() => {
   if (live && !runtimeInfo.error && document.visibilityState === 'visible' && Date.now() - lastActivity < 5 * 60000) api('/runtime').catch(() => {});
 }, 4 * 60000);
+
+let checkingSave=false;
+setInterval(async()=>{
+  if(!live || !pendingSync || checkingSave || document.visibilityState!=='visible')return;
+  checkingSave=true;const operation=pendingSync;
+  try{
+    const result=await api('/deals/'+operation.dealId);
+    if(pendingSync?.operationId!==operation.operationId)return;
+    const desired=operation.draft || {},keys=Object.keys(desired).filter(k=>['address','apartment','date','windowStart','windowEnd','duration','comment','years','route'].includes(k)),same=keys.length>0 && keys.every(k=>String(result.deal[k] ?? '')===String(desired[k] ?? ''));
+    if(!result.pendingOperation && (same || result.confirmedOperationIds?.includes(operation.operationId))){mergeDeal(result);pendingSync=null;renderAll();updateAvailability();notify('Выезд сохранён.');tripUpdates?.postMessage('changed');}
+  }catch(error){if(![403,404].includes(error.status))notify(error.message,true);}
+  finally{checkingSave=false;}
+},5000);
+const tripUpdates=typeof BroadcastChannel==='function'?new BroadcastChannel('yuktari-trip-updates'):null;
+function refreshVisible(){if(live && currentView==='sheet' && document.visibilityState==='visible' && !calendarLoading)void loadLiveCalendar();}
+tripUpdates?.addEventListener('message',refreshVisible);
+window.addEventListener('focus',refreshVisible);
+document.addEventListener('visibilitychange',refreshVisible);

@@ -3,7 +3,7 @@ async function request(path, body, background = false) {
   try {
     response = await fetch('/api' + path, { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(25_000),
       ...(background ? {headers:{'X-Planner-Async':'1'}} : {}),
-      ...(body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'yuktari-planner' }, body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'yuktari-planner','X-Planner-Async':'1' }, body: JSON.stringify(body) }),
     });
   } catch { throw Object.assign(new Error('Нет ответа сервера приложения. Если выполнялось сохранение, сначала проверьте его результат.'), { code: 'APP_UNAVAILABLE' }); }
   let payload;
@@ -20,10 +20,12 @@ async function request(path, body, background = false) {
 export async function api(path, body) {
   let result = await request(path,body,body === undefined);
   const deadline = Date.now()+610_000;
+  let delay=150;
   while (result?.pendingJob) {
     if (Date.now() > deadline) throw Object.assign(new Error('Загрузка занимает слишком много времени. Повторите загрузку данных.'),{code:'READ_TIMEOUT'});
-    await new Promise(resolve => setTimeout(resolve,1000));
+    await new Promise(resolve => setTimeout(resolve,delay));
     result = await request('/read-jobs/'+result.pendingJob);
+    delay=Math.min(1500,delay*1.4);
   }
   return result;
 }

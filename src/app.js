@@ -9,6 +9,7 @@ const assets = new Map([
   ['/js/app.js', ['js/app.js', 'text/javascript; charset=utf-8']],
   ['/js/planner.js', ['js/planner.js', 'text/javascript; charset=utf-8']],
   ['/js/bridge.js', ['js/bridge.js', 'text/javascript; charset=utf-8']],
+  ['/js/picker.js', ['js/picker.js', 'text/javascript; charset=utf-8']],
 ]);
 
 export function createApp(config = {}, dependencies = {}) {

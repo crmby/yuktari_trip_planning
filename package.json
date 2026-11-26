@@ -1,6 +1,6 @@
 {
   "name": "yuktari-trip-planning",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "description": "Планирование выездов внутри Битрикс24 VibeCode",
   "type": "module",

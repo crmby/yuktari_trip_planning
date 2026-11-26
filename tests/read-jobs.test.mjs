@@ -5,6 +5,7 @@ import { createReadJobs } from '../src/bitrix/read-jobs.js';
 test('фоновые чтения ограничены, истекают и не выдают результат другой сессии',async()=>{
   let now=0,release;
   const jobs=createReadJobs({now:()=>now}),req={headers:{'x-vibe-authorization':'Bearer vibe_session_test'}};
+  assert.throws(()=>jobs.start({...req,method:'POST'},'/bookings',()=>Promise.resolve()),{code:'READ_ONLY_JOB'});
   const gate=new Promise(resolve=>{release=resolve;});
   const job=jobs.start(req,'/bootstrap',async()=>{await gate;return {status:401,body:{success:false,error:{code:'AUTH_REQUIRED'}}};});
   for(let i=0;i<3;i++)jobs.start(req,'/read'+i,()=>gate);

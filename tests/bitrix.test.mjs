@@ -11,6 +11,7 @@ import { createStore } from '../src/bitrix/store.js';
 import { createPlanningService } from '../src/bitrix/service.js';
 import { createApp } from '../src/app.js';
 import { version } from '../src/build.js';
+import { AppError } from '../src/bitrix/errors.js';
 import { fixture, context } from './fixtures/crm.mjs';
 
 async function setup(t) {
@@ -41,6 +42,38 @@ test('канонические UF-поля, все услуги и ID инфоб
   assert.equal(deal.apartment,'14');assert.equal(deal.route,'81');assert.equal(deal.phone,'+375000000000');
   assert.equal(deal.products.length,2);assert.equal(deal.products[0].quantity,2);
   assert.equal(deal.years,'3');assert.equal(deal.comment,'Отдельный комментарий');
+});
+test('произвольная длительность в минутах сохраняется, координаты адресного поля не теряются',async t=>{
+  const f=await setup(t);f.contacts.get('201')[f.contactKeys.address]='Тестовый адрес|53.9;27.5';
+  const request=await input(f);request.draft.address='Тестовый адрес';request.draft.duration=75;request.draft.windowEnd='11:00';
+  const result=await f.service.save(request,context);
+  assert.equal(result.deal.duration,75);assert.equal(result.deal.address,'Тестовый адрес');
+  assert.equal(f.contacts.get('201')[f.contactKeys.address],'Тестовый адрес|53.9;27.5');
+});
+test('календарь читает свежие поля из списка без отдельного get каждой сделки и переживает недоступный контакт',async()=>{
+  const f=fixture(),requests=[];for(const d of f.deals.values())d[f.dealKeys.date]='2026-11-25';
+  const crm=createCrm(async(path,options)=>{requests.push(path);if(path==='/contacts/202')throw new AppError(404,'ENTITY_NOT_FOUND','Нет контакта');return f.call(path,options);});
+  const page=await crm.calendar('2026-11-25',null,context);
+  assert.deepEqual(page.deals.map(d=>d.id),['101']);assert.equal(page.unavailable,1);
+  assert.equal(requests.filter(path=>/^\/deals\/\d+$/.test(path)).length,0);
+});
+test('частично сохранённый выезд виден из календаря; чужая незавершённая сделка не блокирует выбранную',async t=>{
+  const f=await setup(t),request=await input(f);f.setFailure(true);
+  await assert.rejects(f.service.save(request,context),{code:'CRM_SYNC_UNCERTAIN'});
+  const page=await f.service.calendar('2026-11-25',null,context);
+  assert.equal(page.bookings[0].dealId,'101');assert.equal(page.bookings[0].date,'2026-11-25');assert.equal(page.bookings[0].syncState,'pending');
+  const independent=await f.service.deal('102',context);assert.equal(independent.pendingOperation,null);assert.equal(independent.deal.id,'102');
+  const originalGet=f.crm.getDeal;
+  f.crm.getDeal=async(id,ctx)=>{if(id==='999')throw new AppError(404,'ENTITY_NOT_FOUND','Сделка недоступна');return originalGet(id,ctx);};
+  await f.store.transaction(async(state,persist)=>{state.bookings.push({...state.bookings[0],id:'old',dealId:'999'});await persist(state);});
+  assert.deepEqual((await f.service.calendar('2026-11-25',null,context)).bookings.map(b=>b.dealId),['101']);
+  assert.equal(f.writes.length,2);
+});
+test('потерянный ответ подтверждается автоматически при чтении текущей сделки без повторной записи',async t=>{
+  const f=await setup(t),request=await input(f);f.setLostReply(true);
+  await assert.rejects(f.service.save(request,context),{code:'CRM_SYNC_UNCERTAIN'});
+  const result=await f.service.deal('101',context);
+  assert.equal(result.pendingOperation,null);assert.equal(result.booking.syncState,'synced');assert.equal(f.writes.length,2);
 });
 test('фильтры используют заданные ID воронок, контекст сделки и права CRM независимы от названия',async()=>{
   const f=fixture(),requests=[];
@@ -254,4 +287,20 @@ test('фоновое чтение отвечает до авторизации, 
   let result;
   for(let i=0;i<30;i++){result=await poll();if(result.status!==202)break;await new Promise(resolve=>setTimeout(resolve,10));}
   assert.equal(result.status,200);const text=await result.text();assert.ok(text.includes('funnelOptions'));assert.equal(text.includes('vibe_session_'),false);assert.equal(authCalls,1);assert.equal(f.writes.length,0);
+});
+test('фоновое сохранение быстро подтверждает приём, защищено от CSRF и опрос не повторяет PATCH',async t=>{
+  const f=await setup(t),request=await input(f);let release;const gate=new Promise(resolve=>{release=resolve;});
+  const call=async(path,options)=>{if(path==='/contacts/201'&&options?.method==='PATCH')await gate;return f.call(path,options);};
+  const server=createServer(createApp({mode:'bitrix',portal:context.portal,dataDir:f.directory,appUrl:'https://test.invalid'},{call,store:f.store}));
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>{release();server.close(resolve);server.closeAllConnections();}));
+  const base=`http://127.0.0.1:${server.address().port}`,headers={'x-vibe-authorization':context.authorization,'X-Planner-Async':'1','Content-Type':'application/json','X-Requested-With':'yuktari-planner',Origin:'https://test.invalid'};
+  const post=()=>fetch(base+'/api/bookings',{method:'POST',headers,body:JSON.stringify(request),signal:AbortSignal.timeout(2000)});
+  assert.equal((await fetch(base+'/api/bookings',{method:'POST',headers:{...headers,Origin:'https://other.invalid'},body:JSON.stringify(request)})).status,403);
+  const accepted=await post();assert.equal(accepted.status,202);const {jobId}=await accepted.json();
+  assert.equal((await (await post()).json()).jobId,jobId);
+  const poll=()=>fetch(base+'/api/read-jobs/'+jobId,{headers:{'x-vibe-authorization':context.authorization}});
+  assert.equal((await poll()).status,202);release();let result;
+  for(let i=0;i<60;i++){result=await poll();if(result.status!==202)break;await new Promise(resolve=>setTimeout(resolve,10));}
+  assert.equal(result.status,200);assert.equal((await result.json()).data.booking.syncState,'synced');
+  await poll();assert.equal(f.writes.length,2);
 });

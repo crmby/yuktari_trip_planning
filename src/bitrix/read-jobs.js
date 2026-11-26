@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AppError } from './errors.js';
 
-// Only reads run here. A result is published only after the normal authorization
-// and CRM permission checks; polling cannot start a CRM request or write.
-export function createReadJobs({ now = Date.now } = {}) {
+// Results are published only after authorization and CRM checks. Polling never
+// re-executes the operation. Writes must be explicitly enabled by the API router.
+export function createReadJobs({ now = Date.now, allowWrites = false } = {}) {
   const jobs = new Map();
   function owner(req) {
     const authorization = req.headers['x-vibe-authorization'];
@@ -12,6 +12,7 @@ export function createReadJobs({ now = Date.now } = {}) {
   }
   function clean() { for (const [id,job] of jobs) if (job.expires <= now()) { job.controller.abort(); jobs.delete(id); } }
   function start(req, key, execute) {
+    if(req.method && req.method!=='GET' && !allowWrites)throw new AppError(405,'READ_ONLY_JOB','Доступно только чтение.');
     clean(); const session = owner(req);
     const own = [...jobs.values()].filter(job => job.owner === session);
     const previous = own.find(job => job.key === key && !job.result);

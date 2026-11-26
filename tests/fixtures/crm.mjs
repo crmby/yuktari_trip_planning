@@ -20,6 +20,7 @@ export function fixture() {
     if (path==='/contacts/fields') return {data:schema(contactKeys)};
     if (path==='/userfields/contacts') return {data:[{fieldName:CONTACT_FIELDS.route,settings:{IBLOCK_ID:55},multiple:'N'}]};
     if (path==='/deal-categories') return {data:FUNNEL_NAMES.map((name,i)=>({id:i+1,name}))};
+    if (entity==='lists' && related==='type') return {data:{iblockTypeId:'lists'}};
     if (entity==='lists') return url.searchParams.get('start')==='0' ? {data:[{ID:'81',NAME:'Тестовый маршрут'}],meta:{next:50}} : {data:[{ID:'82',NAME:'Другой маршрут'}],meta:{}};
     if (entity==='users') return {data:id?{id:Number(id),lastName:'Сотрудник',name:'Иван',active:true}:[{id:8,lastName:'Сотрудник',name:'Иван',active:true}]};
     if (entity==='placements') { writes.push({path,...options}); return {success:true,data:{}}; }

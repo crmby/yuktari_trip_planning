@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { createAuthenticator, createVibeClient } from '../src/bitrix/client.js';
+import { createCrm } from '../src/bitrix/crm.js';
 import { createStore } from '../src/bitrix/store.js';
 import { createPlanningService } from '../src/bitrix/service.js';
 import { createApp } from '../src/app.js';
@@ -40,6 +41,33 @@ test('канонические UF-поля, все услуги и ID инфоб
   assert.equal(deal.apartment,'14');assert.equal(deal.route,'81');assert.equal(deal.phone,'+375000000000');
   assert.equal(deal.products.length,2);assert.equal(deal.products[0].quantity,2);
   assert.equal(deal.years,'3');assert.equal(deal.comment,'Отдельный комментарий');
+});
+test('маршруты используют подтверждённый тип инфоблока, без предположения lists и серверного фильтра',async()=>{
+  const f=fixture(),requests=[];
+  const crm=createCrm(async(path,options)=>{
+    requests.push(path);
+    if (path==='/lists/55/type') return {data:{iblockTypeId:'bitrix_processes'}};
+    if (path.startsWith('/lists/55/elements')) {
+      const query=new URL(path,'https://test.invalid').searchParams;
+      assert.equal(query.get('iblockTypeId'),'bitrix_processes');assert.equal(query.has('filter'),false);
+      if(query.get('start')==='0') return {data:[{ID:'81',NAME:'Рабочий маршрут',ACTIVE:'Y'},{ID:'88',NAME:'Неактивный',ACTIVE:'N'}],meta:{next:50}};
+      return {data:[{ID:'82',NAME:'Второй маршрут'}],meta:{}};
+    }
+    return f.call(path,options);
+  },{routeIblockType:'lists'});
+  const meta=await crm.metadata(context);
+  assert.deepEqual(meta.routes.map(r=>r.id),['81','82']);
+  assert.equal(requests.filter(p=>p==='/lists/55/type').length,1);
+  assert.ok(requests.indexOf('/lists/55/type')<requests.findIndex(p=>p.startsWith('/lists/55/elements')));
+});
+test('неизвестный тип или отказ определения типа не вызывают перебор справочников',async()=>{
+  const f=fixture();
+  for (const result of [{data:{iblockTypeId:'catalog'}},null]) {
+    const requests=[];
+    const crm=createCrm(async(path,options)=>{requests.push(path);if(path==='/lists/55/type'){if(result)return result;throw Object.assign(new Error('denied'),{code:'SCOPE_DENIED'});}return f.call(path,options);});
+    await assert.rejects(crm.metadata(context),{code:result?'ROUTE_LIST_NOT_CONFIGURED':'SCOPE_DENIED'});
+    assert.equal(requests.some(p=>p.includes('/elements')),false);
+  }
 });
 test('ошибки ключа, несовпадения приложения и сессии различаются без утечки ответа API',async()=>{
   for (const [status,code,expected] of [[401,'INVALID_API_KEY',/не принимает ключ/],[401,'KEY_EXPIRED',/не принимает ключ/],[403,'SESSION_APP_MISMATCH',/другому OAuth-приложению/],[401,'INVALID_SESSION',/заново войти или выдать/],[401,'TOKEN_MISSING',/При первом входе/]]) {

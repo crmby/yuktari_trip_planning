@@ -11,6 +11,7 @@ function requestLabel(path) {
     '/users':'загрузка сотрудников', '/placements/bind':'привязка вкладки сделки',
   };
   if (labels[pathname]) return labels[pathname];
+  if (/^\/lists\/\d+\/type$/.test(pathname)) return 'определение типа инфоблока маршрутов';
   if (/^\/lists\/\d+\/elements$/.test(pathname)) return 'загрузка справочника маршрутов';
   if (/^\/deals\/\d+\/products$/.test(pathname)) return 'загрузка услуг сделки';
   if (/^\/deals\/\d+$/.test(pathname)) return 'доступ к карточке сделки';

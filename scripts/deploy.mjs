@@ -86,7 +86,7 @@ try {
     }
     const dataDir = '/opt/data/yuktari-trip-planning';
     const runtimeEnv = { NODE_ENV:'production',HOST:'0.0.0.0',PORT:'3000',B24_DOMAIN:portal,APP_MODE:mode,DATA_DIR:dataDir };
-    for (const name of ['VIBE_APP_KEY','APP_URL','PLANNER_MANAGER_IDS','B24_ROUTE_IBLOCK_ID','B24_ROUTE_IBLOCK_TYPE']) if (process.env[name]) runtimeEnv[name] = process.env[name];
+    for (const name of ['VIBE_APP_KEY','APP_URL','PLANNER_MANAGER_IDS','B24_ROUTE_IBLOCK_ID']) if (process.env[name]) runtimeEnv[name] = process.env[name];
     const form = new FormData();
     form.set('archive', new Blob([readFileSync(archive)], { type: 'application/gzip' }), 'app.tar.gz');
     for (const [name, value] of Object.entries({

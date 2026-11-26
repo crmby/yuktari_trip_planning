@@ -29,7 +29,7 @@ function bindFields(schema, mapping) {
 export function snapshotRevision(deal, contact, mapping) {
   return createHash('sha256').update(JSON.stringify({ contactId: String(contact.id), contact: Object.values(mapping.contact).map(f => contact[f.key] ?? null), deal: Object.values(mapping.deal).map(f => deal[f.key] ?? null) })).digest('hex');
 }
-export function createCrm(call, { routeIblockId = '', routeIblockType = 'lists' } = {}) {
+export function createCrm(call, { routeIblockId = '' } = {}) {
   const cache = new Map();
   async function api(path, context, options = {}) { return call(path, { authorization: context.authorization, ...options }); }
   async function metadata(context) {
@@ -42,14 +42,15 @@ export function createCrm(call, { routeIblockId = '', routeIblockType = 'lists' 
     const field = asArray(fields.data).find(f => normalizeField(f.fieldName) === normalizeField(CONTACT_FIELDS.route));
     const settings = field?.settings || {};
     const iblockId = requireId(routeIblockId || settings.IBLOCK_ID || settings.iblockId, 'инфоблока маршрутов (настройки поля контакта)');
-    const iblockType = scalar(settings.IBLOCK_TYPE_ID || settings.iblockTypeId || routeIblockType);
-    if (!['lists', 'lists_socnet', 'bitrix_processes', 'structure'].includes(iblockType)) throw new AppError(503, 'ROUTE_LIST_NOT_CONFIGURED', 'Уточните тип инфоблока маршрутов в настройках приложения.');
+    const detected = await api(`/lists/${iblockId}/type`, context);
+    const iblockType = scalar(detected.data?.iblockTypeId);
+    if (!['lists', 'lists_socnet', 'bitrix_processes', 'structure'].includes(iblockType)) throw new AppError(503, 'ROUTE_LIST_NOT_CONFIGURED', 'API не подтвердил поддерживаемый тип инфоблока поля «Маршрут». Проверьте, что поле ссылается на универсальный список, а не на товарный каталог.');
     mapping.contact.route.multiple = field?.multiple === 'Y' || field?.multiple === true || mapping.contact.route.multiple === true;
     const routes = [], seen = new Set(); let start = 0;
     for (let page = 0; page < 100; page++) {
-      const query = new URLSearchParams({ iblockTypeId: iblockType, start: String(start), filter: JSON.stringify({ ACTIVE: 'Y' }), select: 'ID,NAME' });
+      const query = new URLSearchParams({ iblockTypeId: iblockType, start: String(start), select: 'ID,NAME,ACTIVE' });
       const result = await api(`/lists/${iblockId}/elements?${query}`, context);
-      for (const item of asArray(result.data)) { const id = requireId(item.ID); if (!routes.some(r => r.id === id)) routes.push({ id, label: scalar(item.NAME) }); }
+      for (const item of asArray(result.data)) { if (item.ACTIVE === 'N' || item.ACTIVE === false) continue; const id = requireId(item.ID); if (!routes.some(r => r.id === id)) routes.push({ id, label: scalar(item.NAME) }); }
       if (result.meta?.next === undefined || result.meta?.next === null) break;
       const next = Number(result.meta.next);
       if (!Number.isFinite(next) || next <= start || seen.has(next) || page === 99) throw new AppError(502, 'ROUTE_PAGINATION_FAILED', 'Не удалось полностью загрузить справочник маршрутов.');

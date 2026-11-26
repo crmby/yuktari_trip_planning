@@ -23,6 +23,6 @@ export function readConfig(env = process.env) {
   return { port, host: env.HOST || '127.0.0.1', portal, mode, appUrl,
     appKey: env.VIBE_APP_KEY || '', dataDir: env.DATA_DIR || resolve(projectRoot, 'var/planning'),
     managerIds: String(env.PLANNER_MANAGER_IDS || '').split(',').map(s => s.trim()).filter(s => /^[1-9]\d*$/.test(s)),
-    routeIblockId: env.B24_ROUTE_IBLOCK_ID || '', routeIblockType: env.B24_ROUTE_IBLOCK_TYPE || 'lists',
+    routeIblockId: env.B24_ROUTE_IBLOCK_ID || '',
   };
 }

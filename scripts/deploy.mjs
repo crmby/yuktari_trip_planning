@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { loadLocalEnv, projectRoot } from '../src/config.js';
+import { needsCatalogChoice, catalogSummary } from './deploy-options.mjs';
+import { createInterface } from 'node:readline/promises';
 
 const dryRun = process.argv.includes('--dry-run');
 const entries = ['src', 'public', 'package.json', 'package-lock.json'];
@@ -30,9 +32,10 @@ function tar(args) {
 }
 
 async function api(path, key, options = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options, headers: { 'X-Api-Key': key }, redirect: 'error', signal: AbortSignal.timeout(900_000),
-  });
+  let response;
+  try { response = await fetch(`${baseUrl}${path}`, {
+    ...options, headers: { 'X-Api-Key': key }, redirect: 'error', signal: AbortSignal.timeout(options.method === 'POST' ? 900_000 : 15_000),
+  }); } catch { throw new Error(options.method === 'POST' ? 'VibeCode: ответ доставки не получен. Проверьте журнал сервера перед повтором.' : 'VibeCode: HTTPS-соединение не установлено. Деплой не начат.'); }
   if (!response.ok) throw new Error(`VibeCode: HTTP ${response.status}. Подробности доступны в кабинете VibeCode.`);
   let body;
   try { body = await response.json(); } catch { throw new Error('VibeCode вернул ответ в неожиданном формате.'); }
@@ -59,13 +62,24 @@ try {
     const { SERVER_ID: serverId, VIBE_API_KEY: key, B24_DOMAIN: portal } = process.env;
     if (!serverId || !key || !portal) throw new Error('Заполните SERVER_ID, VIBE_API_KEY и B24_DOMAIN в локальном .env.');
     if (!/^[a-z0-9.-]+$/i.test(portal)) throw new Error('B24_DOMAIN должен содержать домен без протокола и пути.');
-    await api('/me', key);
+    const me = await api('/me', key);
+    if (typeof me.portal !== 'string' || me.portal.toLowerCase() !== portal.toLowerCase()) throw new Error('VibeCode: ключ доставки не подтвердил целевой портал.');
     const id = encodeURIComponent(serverId);
-    const server = await api(`/infra/servers/${id}/ssh`, key);
+    const server = await api(`/infra/servers/${id}`, key);
     if (server.mode !== 'BLACKHOLE') throw new Error('Для этого проекта требуется существующий сервер в режиме BLACKHOLE. Режим доступа не изменён.');
     const mode = process.env.APP_MODE || (process.env.VIBE_APP_KEY ? 'bitrix' : 'demo');
     if (!['demo', 'bitrix'].includes(mode)) throw new Error('Заполните APP_MODE: demo или bitrix.');
     if (mode === 'bitrix' && (!/^vibe_app_[A-Za-z0-9_-]+$/.test(process.env.VIBE_APP_KEY || '') || !/^https:\/\/[a-z0-9.-]+\/?$/i.test(process.env.APP_URL || ''))) throw new Error('Заполните VIBE_APP_KEY и точный HTTPS APP_URL для режима bitrix.');
+    if (process.env.APP_URL && (!server.appUrl || new URL(server.appUrl).origin !== new URL(process.env.APP_URL).origin)) throw new Error('VibeCode: APP_URL не совпадает с адресом выбранного сервера.');
+    let catalogChoice;
+    if (needsCatalogChoice(server) && process.stdin.isTTY && process.stdout.isTTY) {
+      const prompt = createInterface({input:process.stdin,output:process.stdout});
+      try {
+        const answer = (await prompt.question('Показывать ли приложение сотрудникам в Битрикс24 — карточку в каталоге и чат приложения? ')).trim().toLowerCase();
+        if (['да','yes','y'].includes(answer)) catalogChoice = true;
+        else if (['нет','no','n'].includes(answer)) catalogChoice = false;
+      } finally { prompt.close(); }
+    }
     const dataDir = '/opt/data/yuktari-trip-planning';
     const runtimeEnv = { NODE_ENV:'production',HOST:'0.0.0.0',PORT:'3000',B24_DOMAIN:portal,APP_MODE:mode,DATA_DIR:dataDir };
     for (const name of ['VIBE_APP_KEY','APP_URL','PLANNER_MANAGER_IDS','B24_ROUTE_IBLOCK_ID','B24_ROUTE_IBLOCK_TYPE']) if (process.env[name]) runtimeEnv[name] = process.env[name];
@@ -75,13 +89,17 @@ try {
       runtime: 'node20', install: 'cd /opt/app && npm ci --omit=dev',
       start: 'cd /opt/app && node src/server.js', port: '3000', cleanDeploy: 'true',
       displayName: 'Планирование выездов', description: 'Планирование выездов сотрудников Юктари',
+      changelog: process.env.DEPLOY_CHANGELOG || 'Добавлена синхронизация полей выезда с контактом и сделкой, выбор мастеров из сотрудников. Уточнены сообщения авторизации VibeCode.',
       env: JSON.stringify(runtimeEnv), dataDirs: JSON.stringify([dataDir]),
     })) form.set(name, value);
+    if (catalogChoice !== undefined) form.set('showInBitrix24',String(catalogChoice));
     // The management key is never passed into the application runtime.
     console.log('Загрузка и деплой приложения…');
     const result = await api(`/infra/servers/${id}/deploy?stream=false`, key, { method: 'POST', body: form });
     if (result.steps?.some(step => ['failed', 'error'].includes(String(step.status).toLowerCase()))) throw new Error('Один из шагов деплоя завершился ошибкой. Проверьте журнал VibeCode.');
     console.log('VibeCode подтвердил деплой. Адрес и журнал доступны в карточке сервера.');
+    try { console.log(catalogSummary(await api(`/infra/servers/${id}`, key))); }
+    catch { console.log('Показ в Битрикс24: текущее состояние после доставки проверить не удалось.'); }
   }
 } catch (error) {
   // Never print remote bodies, environment values or raw network exceptions.
